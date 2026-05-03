@@ -1,0 +1,53 @@
+[Unit]
+Description=Velvet AI Runtime
+Documentation=https://github.com/your-org/velvet-runtime
+# Require network only if CAN or socket interfaces are used.
+# For fully offline-first deployments, remove After=network.target.
+After=network.target
+# Ensure the runtime starts after any storage mounts needed for receipts.
+After=local-fs.target
+
+[Service]
+Type=simple
+
+# Runtime user — create a dedicated system user for production.
+# sudo useradd -r -s /bin/false velvet
+User=velvet
+Group=velvet
+
+# Absolute path to the deployment directory on UP Squared.
+WorkingDirectory=/opt/velvet-runtime
+
+# Absolute path to Python interpreter.
+# Adjust if using a venv: /opt/velvet-runtime/.venv/bin/python
+ExecStart=/usr/bin/python3 /opt/velvet-runtime/main.py
+
+# Restart policy
+Restart=on-failure
+RestartSec=5s
+StartLimitIntervalSec=60s
+StartLimitBurst=5
+
+# Environment
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/opt/velvet-runtime
+
+# Stdout/stderr go to journald
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=velvet-runtime
+
+# Resource limits — tune for UP Squared hardware
+# LimitNOFILE=65535
+# MemoryMax=512M
+
+# Harden the service
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/velvet-runtime/receipts
+ReadWritePaths=/opt/velvet-runtime/logs
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

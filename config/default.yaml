@@ -1,0 +1,37 @@
+# velvet-runtime: config/default.yaml
+# =====================================
+# Default configuration for the Velvet AI Runtime.
+# All values here are overridable via environment or runtime flags.
+# No secrets belong here.
+
+runtime:
+  name: velvet-runtime
+  version: "0.1.0"
+  environment: production         # production | development
+  idle_loop_interval_seconds: 1
+
+modules:
+  directory: modules              # Relative path from repo root
+  autoload: true                  # Load all .py modules in directory on boot
+
+receipts:
+  backend: jsonl                  # Only supported backend: jsonl
+  path: receipts/receipts.jsonl   # JSONL file for receipt storage
+  fail_closed: true               # MUST remain true in production
+
+events:
+  enforce_receipt_on_actuation: true   # MUST remain true in production
+
+logging:
+  level: INFO                     # DEBUG | INFO | WARNING | ERROR | CRITICAL
+  format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+  output: stdout                  # stdout | file
+  file_path: logs/velvet.log      # Only used if output == file
+
+interface:
+  enabled: false                  # No UI required at runtime boot
+  hook: lifecycle_only
+
+brain:
+  enabled: false                  # Brain is advisory. Disabled until attached.
+  advisory_only: true             # INVARIANT: must never be false
