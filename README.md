@@ -14,6 +14,16 @@ The bootstrap and wiring layer for the Velvet AI ecosystem.
 - Starts safely and shuts down cleanly via `SIGTERM` / `SIGINT`
 - Runs as a systemd service with restart-on-failure
 
+## Boot Identity Runtime
+
+Velvet Runtime starts from identity verification, not blind module execution.
+
+Runtime loads configuration, body registry state, profile bindings, capability policy, and receipt ledger status before enabling write-capable behavior. Modules start observe-only unless authorized.
+
+See:
+
+- [Boot Identity Runtime Contract](docs/boot_identity_runtime_contract.md)
+
 ### Architectural Invariants
 
 All of these are enforced in code, not just documented:
