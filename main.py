@@ -8,6 +8,7 @@ from velvet_logging.logger import get_logger
 from runtime_wiring import build_runtime
 from services.continuity_activation import continuity_boot_passed, run_configured_continuity_gate
 from services.module_loader import ModuleLoader
+from services.recovery_mode import enter_recovery_mode
 
 logger = get_logger("velvet.main")
 _SHUTDOWN = False
@@ -17,6 +18,19 @@ def _handle_signal(signum, frame):
     global _SHUTDOWN
     logger.info(f"[BOOT] Signal {signum} received. Initiating shutdown.")
     _SHUTDOWN = True
+
+
+def _run_recovery(reason, continuity=None):
+    logger.critical(f"[RECOVERY] {reason}")
+    enter_recovery_mode(
+        report_path="/opt/velvet/state/recovery/continuity_status.json",
+        reason=reason,
+        continuity_state=getattr(continuity, "state", "unavailable"),
+        verified=getattr(continuity, "verified", False),
+        receipt_persisted=getattr(continuity, "receipt_persisted", False),
+        authority_level=getattr(continuity, "authority_level", 0),
+        should_stop=lambda: _SHUTDOWN,
+    )
 
 
 def main():
@@ -33,16 +47,12 @@ def main():
     try:
         continuity = run_configured_continuity_gate()
     except Exception as exc:
-        logger.critical(f"[BOOT] Continuity verification failed: {exc}")
-        sys.exit(1)
+        _run_recovery(f"continuity verification failed: {exc}")
+        return
 
     if not continuity_boot_passed(continuity):
-        logger.critical(
-            f"[BOOT] Continuity denied boot: state={continuity.state}, "
-            f"persisted={continuity.receipt_persisted}, "
-            f"authority={continuity.authority_level}"
-        )
-        sys.exit(1)
+        _run_recovery("continuity denied normal boot", continuity)
+        return
 
     logger.info("[BOOT] Continuity verified and receipted.")
 
