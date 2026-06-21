@@ -60,7 +60,11 @@ class TestPipelineProvisioning(unittest.TestCase):
             )
             self.assertEqual(pipeline.executor_registry.count(), 0)
             self.assertEqual(pipeline.executor_registry.names(), ())
-            self.assertEqual(pipeline.safety_check(None, {}), (False, "runtime safety check is not provisioned"))
+            token = SimpleNamespace(capability="comfort.request", target="cabin")
+            self.assertEqual(
+                pipeline.safety_check(token, {}),
+                (False, "no matching safety gate is registered"),
+            )
 
 
 if __name__ == "__main__":
