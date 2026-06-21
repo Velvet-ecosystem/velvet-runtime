@@ -1,20 +1,21 @@
-# Post-Continuity Optional Activation
+# Post-Continuity Interface Activation
 
-The mandatory runtime core now assembles only the event bus, receipt validator, event enforcer, and hardened publishing callable.
+The base runtime assembles the event bus, receipt validator, event enforcer, hardened publishing callable, and one inert advisory-brain presence probe.
 
-Optional advisory and interface components are evaluated only after:
+The `BrainAdapter` probe is constructed with no arguments, receives no bus, enforcer, publishing callable, receipt validator, Court pipeline, executor registry, or hardware handle, and is never attached. This preserves the established brain-isolation invariant while confirming whether the advisory package is present.
+
+The normal interface lifecycle start is delayed until:
 
 ```text
 identity context loaded
   -> continuity verified and receipted
   -> Court pipeline provisioned
   -> modules loaded
+  -> interface lifecycle start
 ```
 
-The advisory brain may be instantiated after secure boot, but it receives no bus, enforcer, publishing callable, pipeline, executor registry, or hardware handle. It remains unattached until a dedicated proposal-only interface exists.
+Recovery-mode boots therefore do not announce a normal runtime start through the optional interface lifecycle.
 
-The interface lifecycle start hook now fires only after secure boot succeeds. Recovery-mode boots do not announce a normal runtime start through the optional interface lifecycle.
-
-Missing optional packages and optional initialization failures remain non-fatal and are returned as structured warnings.
+A missing interface package or interface initialization failure remains non-fatal and is returned as a structured warning.
 
 This change grants no new capability, route, executor, or hardware authority.
