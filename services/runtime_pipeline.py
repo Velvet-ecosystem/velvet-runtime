@@ -1,9 +1,15 @@
 # SPDX-License-Identifier: GPL-3.0-only
 
-from dataclasses import dataclass
+from __future__ import annotations
 
-from services.approved_executor import execute_authorized
-from services.court_authorization import authorize_intent
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Mapping
+
+from services.approved_executor import ExecutionResult, ExecutorRegistry, execute_authorized
+from services.contracts import ReceiptSink, ReplayLedger, SafetyCheck
+from services.court_authorization import CourtDecision, authorize_intent
+from services.court_intent import Intent
 
 
 @dataclass(frozen=True)
@@ -11,13 +17,22 @@ class PipelineResult:
     authorized: bool
     executed: bool
     state: str
-    court: object
-    execution: object | None
+    court: CourtDecision
+    execution: ExecutionResult | None
 
 
 class RuntimePipeline:
-    def __init__(self, *, capability_context, court_policy_path, signing_key,
-                 executor_registry, safety_check, receipt_sink, replay_ledger):
+    def __init__(
+        self,
+        *,
+        capability_context: Any,
+        court_policy_path: str | Path,
+        signing_key: bytes,
+        executor_registry: ExecutorRegistry,
+        safety_check: SafetyCheck,
+        receipt_sink: ReceiptSink,
+        replay_ledger: ReplayLedger,
+    ) -> None:
         self.capability_context = capability_context
         self.court_policy_path = court_policy_path
         self.signing_key = signing_key
@@ -26,7 +41,14 @@ class RuntimePipeline:
         self.receipt_sink = receipt_sink
         self.replay_ledger = replay_ledger
 
-    def submit(self, *, intent, executor_name, parameters, now=None):
+    def submit(
+        self,
+        *,
+        intent: Intent,
+        executor_name: str,
+        parameters: Mapping[str, Any],
+        now: int | None = None,
+    ) -> PipelineResult:
         court = authorize_intent(
             intent=intent,
             capability_context=self.capability_context,
