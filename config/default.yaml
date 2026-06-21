@@ -24,11 +24,13 @@ continuity:
   identity_chain_path: /opt/velvet/state/continuity/identity_chain.json
   proof_material_path: /opt/velvet/state/continuity/proof_material.bin
   surface_metadata_path: /opt/velvet/state/continuity/surface_identity.json
+  body_registry_path: /opt/velvet/state/body/registry.json
   receipt_ledger_path: /opt/velvet/state/receipts/continuity.log
   environment_overrides:
     identity_chain_path: VELVET_CONTINUITY_IDENTITY_PATH
     proof_material_path: VELVET_CONTINUITY_PROOF_PATH
     surface_metadata_path: VELVET_SURFACE_METADATA_PATH
+    body_registry_path: VELVET_BODY_REGISTRY_PATH
     receipt_ledger_path: VELVET_CONTINUITY_RECEIPTS_PATH
 
 events:

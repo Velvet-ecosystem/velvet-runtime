@@ -23,12 +23,12 @@ from services.hardware_surface import SurfaceIdentity
 
 
 class TestContinuityActivation(unittest.TestCase):
-
     def test_environment_overrides_all_paths(self):
         env = {
             "VELVET_CONTINUITY_IDENTITY_PATH": "/tmp/identity.json",
             "VELVET_CONTINUITY_PROOF_PATH": "/tmp/proof.bin",
             "VELVET_SURFACE_METADATA_PATH": "/tmp/surface.json",
+            "VELVET_BODY_REGISTRY_PATH": "/tmp/body.json",
             "VELVET_CONTINUITY_RECEIPTS_PATH": "/tmp/receipts.log",
         }
         with patch.dict(os.environ, env, clear=False):
@@ -37,6 +37,7 @@ class TestContinuityActivation(unittest.TestCase):
         self.assertEqual(paths.identity_chain, Path("/tmp/identity.json"))
         self.assertEqual(paths.proof_material, Path("/tmp/proof.bin"))
         self.assertEqual(paths.surface_metadata, Path("/tmp/surface.json"))
+        self.assertEqual(paths.body_registry, Path("/tmp/body.json"))
         self.assertEqual(paths.receipt_ledger, Path("/tmp/receipts.log"))
 
     def test_missing_proof_material_fails_closed(self):
@@ -45,6 +46,7 @@ class TestContinuityActivation(unittest.TestCase):
                 identity_chain=Path(tmp) / "identity.json",
                 proof_material=Path(tmp) / "missing.bin",
                 surface_metadata=Path(tmp) / "surface.json",
+                body_registry=Path(tmp) / "body.json",
                 receipt_ledger=Path(tmp) / "receipts.log",
             )
             with self.assertRaises(FileNotFoundError):
@@ -83,10 +85,14 @@ class TestContinuityActivation(unittest.TestCase):
     @patch("services.continuity_activation.verify_boot_continuity")
     @patch("services.continuity_activation.make_continuity_receipt_sink")
     @patch("services.continuity_activation.load_identity_chain")
+    @patch("services.continuity_activation.require_active_body")
+    @patch("services.continuity_activation.load_active_body")
     @patch("services.continuity_activation.collect_surface_identity")
-    def test_configured_gate_recollects_current_surface(
+    def test_configured_gate_requires_body_and_enriches_receipt(
         self,
         collect_surface,
+        load_body,
+        require_body,
         load_identity_chain,
         make_sink,
         verify_boot,
@@ -94,18 +100,27 @@ class TestContinuityActivation(unittest.TestCase):
         expected = MagicMock()
         verify_boot.return_value = expected
         load_identity_chain.return_value = ["record"]
-        make_sink.return_value = MagicMock()
+        base_sink = MagicMock()
+        make_sink.return_value = base_sink
         collect_surface.return_value = SurfaceIdentity(
             collector="test",
             facts={"machine_id": "node"},
             fingerprint="v1:current-hardware",
         )
+        body = MagicMock(
+            body_id="tiburon_v0",
+            body_type="vehicle",
+            surface="drive",
+            fingerprint="body-v1:test",
+        )
+        require_body.return_value = body
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             identity = root / "identity.json"
             proof = root / "proof.bin"
             metadata = root / "surface.json"
+            body_registry = root / "body.json"
             ledger = root / "nested" / "continuity.log"
             identity.write_text("{}", encoding="utf-8")
             proof.write_bytes(b"proof-material")
@@ -113,26 +128,29 @@ class TestContinuityActivation(unittest.TestCase):
                 "schema": "velvet.surface.metadata.v1",
                 "surface_label": "Founder Tiburon",
             }), encoding="utf-8")
+            body_registry.write_text("{}", encoding="utf-8")
 
             result = run_configured_continuity_gate(ContinuityBootPaths(
                 identity_chain=identity,
                 proof_material=proof,
                 surface_metadata=metadata,
+                body_registry=body_registry,
                 receipt_ledger=ledger,
             ))
 
         self.assertIs(result, expected)
-        collect_surface.assert_called_once_with(
-            surface_label="Founder Tiburon",
-            reader=None,
-            architecture=None,
-        )
-        load_identity_chain.assert_called_once_with(identity)
-        make_sink.assert_called_once_with(ledger)
+        load_body.assert_called_once_with(body_registry)
+        require_body.assert_called_once_with(load_body.return_value)
         kwargs = verify_boot.call_args.kwargs
         self.assertEqual(kwargs["identity_chain"], ["record"])
-        self.assertEqual(kwargs["local_key"], b"proof-material")
         self.assertEqual(kwargs["active_surface_fingerprint"], "v1:current-hardware")
+
+        sink = kwargs["receipt_sink"]
+        sink({"payload": {"state": "verified"}})
+        sent = base_sink.call_args.args[0]
+        self.assertEqual(sent["payload"]["body_id"], "tiburon_v0")
+        self.assertEqual(sent["payload"]["body_fingerprint"], "body-v1:test")
+        self.assertTrue(sent["payload"]["body_verified"])
 
     def test_invalid_surface_metadata_fails_closed(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -146,6 +164,7 @@ class TestContinuityActivation(unittest.TestCase):
                 identity_chain=root / "identity.json",
                 proof_material=proof,
                 surface_metadata=metadata,
+                body_registry=root / "body.json",
                 receipt_ledger=root / "receipts.log",
             )
             with self.assertRaises(ValueError):
