@@ -12,6 +12,7 @@ from services.continuity_activation import (
     resolve_continuity_paths,
     run_configured_continuity_gate,
 )
+from services.optional_subsystems import activate_optional_subsystems
 from services.recovery_mode import enter_recovery_mode
 from services.secure_boot_services import (
     ModuleLoadingError,
@@ -81,6 +82,12 @@ def main():
     except ModuleLoadingError as exc:
         _run_recovery(f"module loading failed: {exc}", continuity)
         return
+
+    optional_status = activate_optional_subsystems()
+    logger.info(
+        "[BOOT] Optional interface evaluated after secure boot: "
+        f"interface_started={optional_status.interface_started}."
+    )
 
     logger.info(
         "[BOOT] Execution pipeline provisioned, modules loaded, "
