@@ -10,11 +10,12 @@ import tempfile
 import types
 import unittest
 from contextlib import contextmanager
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from services.hardware_surface import SurfaceIdentity
 from tools.provision_continuity import provision_founder
 
 
@@ -45,9 +46,6 @@ def fake_continuity():
     def stable_hash(data: bytes) -> str:
         return "model-hash"
 
-    def generate_surface_fingerprint(label: str) -> str:
-        return f"surface:{label}"
-
     def create_genesis_identity(
         genesis_proof,
         model_fp,
@@ -73,7 +71,6 @@ def fake_continuity():
         return True, [], chain[-1].authority_level
 
     module.stable_hash = stable_hash
-    module.generate_surface_fingerprint = generate_surface_fingerprint
     module.create_genesis_identity = create_genesis_identity
     module.verify_lineage_chain = verify_lineage_chain
 
@@ -88,6 +85,18 @@ def fake_continuity():
             sys.modules["velvet_continuity"] = previous
 
 
+def fake_surface(label: str, fingerprint: str) -> SurfaceIdentity:
+    return SurfaceIdentity(
+        collector="test-collector",
+        facts={
+            "schema": "velvet.surface.v1",
+            "surface_label": label,
+            "machine_id": "node-test",
+        },
+        fingerprint=fingerprint,
+    )
+
+
 class TestProvisionContinuity(unittest.TestCase):
 
     def test_creates_founder_state_and_verifies(self):
@@ -100,25 +109,30 @@ class TestProvisionContinuity(unittest.TestCase):
                 genesis_note="ceremony",
                 authority_level=1,
                 proof_bytes=b"p" * 32,
+                surface_identity=fake_surface("founder", "v1:test-founder"),
             )
 
             identity_path = root / "continuity" / "identity_chain.json"
             proof_path = root / "continuity" / "proof_material.bin"
             surface_path = root / "continuity" / "active_surface.fingerprint"
+            metadata_path = root / "continuity" / "surface_identity.json"
             receipt_dir = root / "receipts"
 
             self.assertTrue(identity_path.is_file())
             self.assertTrue(proof_path.is_file())
             self.assertTrue(surface_path.is_file())
+            self.assertTrue(metadata_path.is_file())
             self.assertTrue(receipt_dir.is_dir())
             self.assertEqual(proof_path.read_bytes(), b"p" * 32)
-            self.assertEqual(surface_path.read_text().strip(), "surface:founder")
+            self.assertEqual(surface_path.read_text().strip(), "v1:test-founder")
             self.assertTrue(result["verified"])
-            self.assertEqual(result["authority_level"], 1)
+            self.assertEqual(result["surface_collector"], "test-collector")
 
             document = json.loads(identity_path.read_text())
-            self.assertEqual(len(document["records"]), 1)
             self.assertEqual(document["records"][0]["id"], "velvet:instance:test")
+            metadata = json.loads(metadata_path.read_text())
+            self.assertEqual(metadata["collector"], "test-collector")
+            self.assertNotIn("facts", metadata)
 
             mode = stat.S_IMODE(proof_path.stat().st_mode)
             self.assertEqual(mode, 0o600)
@@ -133,6 +147,7 @@ class TestProvisionContinuity(unittest.TestCase):
                 genesis_note="ceremony",
                 authority_level=1,
                 proof_bytes=b"p" * 32,
+                surface_identity=fake_surface("founder", "v1:first"),
             )
             provision_founder(**kwargs)
             with self.assertRaises(FileExistsError):
@@ -147,6 +162,7 @@ class TestProvisionContinuity(unittest.TestCase):
                 model_label="runtime",
                 genesis_note="ceremony",
                 proof_bytes=b"a" * 32,
+                surface_identity=fake_surface("founder-a", "v1:first"),
             )
             provision_founder(
                 root=root,
@@ -154,6 +170,7 @@ class TestProvisionContinuity(unittest.TestCase):
                 model_label="runtime",
                 genesis_note="ceremony",
                 proof_bytes=b"b" * 32,
+                surface_identity=fake_surface("founder-b", "v1:second"),
                 force=True,
             )
             self.assertEqual(
@@ -162,7 +179,7 @@ class TestProvisionContinuity(unittest.TestCase):
             )
             self.assertEqual(
                 (root / "continuity" / "active_surface.fingerprint").read_text().strip(),
-                "surface:founder-b",
+                "v1:second",
             )
 
     def test_rejects_short_proof_material(self):
@@ -174,6 +191,7 @@ class TestProvisionContinuity(unittest.TestCase):
                     model_label="runtime",
                     genesis_note="ceremony",
                     proof_bytes=b"short",
+                    surface_identity=fake_surface("founder", "v1:test"),
                 )
 
     def test_rejects_negative_authority(self):
@@ -186,6 +204,7 @@ class TestProvisionContinuity(unittest.TestCase):
                     genesis_note="ceremony",
                     authority_level=-1,
                     proof_bytes=b"p" * 32,
+                    surface_identity=fake_surface("founder", "v1:test"),
                 )
 
 
