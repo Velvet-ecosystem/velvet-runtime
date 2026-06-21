@@ -85,8 +85,7 @@ def main():
 
     optional_status = activate_optional_subsystems()
     logger.info(
-        "[BOOT] Optional subsystems evaluated after secure boot: "
-        f"brain_present={optional_status.brain_present}, "
+        "[BOOT] Optional interface evaluated after secure boot: "
         f"interface_started={optional_status.interface_started}."
     )
 
