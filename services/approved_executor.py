@@ -9,7 +9,7 @@ and persistence of an execution-start receipt.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Mapping, MutableSet
+from typing import Any, Callable, Mapping, MutableSet, Protocol, runtime_checkable
 
 from services.court_token import CapabilityToken, verify_token
 
@@ -17,6 +17,12 @@ from services.court_token import CapabilityToken, verify_token
 Executor = Callable[[Mapping[str, Any]], Mapping[str, Any]]
 SafetyCheck = Callable[[CapabilityToken, Mapping[str, Any]], tuple[bool, str]]
 ReceiptSink = Callable[[dict[str, Any]], Any]
+
+
+@runtime_checkable
+class AtomicReplayLedger(Protocol):
+    def __contains__(self, token_id: object) -> bool: ...
+    def consume(self, token_id: str) -> bool: ...
 
 
 @dataclass(frozen=True)
@@ -62,6 +68,16 @@ class ExecutorRegistry:
         except KeyError as exc:
             raise KeyError(f"executor {normalized!r} is not registered") from exc
 
+    def names(self) -> tuple[str, ...]:
+        return tuple(sorted(self._executors))
+
+    def count(self) -> int:
+        return len(self._executors)
+
+    def is_registered(self, name: str) -> bool:
+        normalized = _normalized(name)
+        return bool(normalized and normalized in self._executors)
+
 
 def execute_authorized(
     *,
@@ -72,7 +88,7 @@ def execute_authorized(
     signing_key: bytes,
     safety_check: SafetyCheck,
     receipt_sink: ReceiptSink,
-    used_token_ids: MutableSet[str],
+    used_token_ids: MutableSet[str] | AtomicReplayLedger,
     now: int | None = None,
 ) -> ExecutionResult:
     """Execute one registered handler after every required gate passes."""
@@ -110,7 +126,36 @@ def execute_authorized(
     if not _persist(start_receipt, receipt_sink):
         return ExecutionResult(False, "start_receipt_unpersisted", name, token.token_id, None, False, False, ("execution-start receipt could not be persisted",))
 
-    used_token_ids.add(token.token_id)
+    try:
+        consumed = _consume_token(used_token_ids, token.token_id)
+    except Exception as exc:
+        errors = (f"token consumption could not be persisted: {exc}",)
+        denied = _receipt(
+            "EXECUTION_DENIED",
+            "replay_ledger_failed",
+            spec.name,
+            token,
+            output=None,
+            errors=errors,
+            actuation_performed=False,
+        )
+        persisted = _persist(denied, receipt_sink)
+        return ExecutionResult(False, "replay_ledger_failed", name, token.token_id, None, True, persisted, errors)
+
+    if not consumed:
+        errors = ("capability token was consumed by another execution process",)
+        denied = _receipt(
+            "EXECUTION_DENIED",
+            "token_replay",
+            spec.name,
+            token,
+            output=None,
+            errors=errors,
+            actuation_performed=False,
+        )
+        persisted = _persist(denied, receipt_sink)
+        return ExecutionResult(False, "token_replay", name, token.token_id, None, True, persisted, errors)
+
     try:
         output = dict(spec.handler(dict(parameters)))
     except Exception as exc:
@@ -139,6 +184,16 @@ def execute_authorized(
     state = "completed" if final_persisted else "completed_unreceipted"
     errors = () if final_persisted else ("final execution receipt could not be persisted",)
     return ExecutionResult(True, state, name, token.token_id, output, True, final_persisted, errors)
+
+
+def _consume_token(ledger, token_id: str) -> bool:
+    consume = getattr(ledger, "consume", None)
+    if callable(consume):
+        return bool(consume(token_id))
+    if token_id in ledger:
+        return False
+    ledger.add(token_id)
+    return True
 
 
 def _deny(state, name, token, errors, receipt_sink):
