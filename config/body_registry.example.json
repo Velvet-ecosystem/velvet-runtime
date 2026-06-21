@@ -1,0 +1,22 @@
+{
+  "schema": "velvet.body.registry.v1",
+  "bodies": [
+    {
+      "body_id": "tiburon_v0",
+      "body_type": "vehicle",
+      "surface": "drive",
+      "status": "active",
+      "hardware_profile": "tiburon_v0_hardware",
+      "safety_profile": "vehicle_default",
+      "authority_profile": "owner_present",
+      "receipt_policy": "all_writes",
+      "organs": [
+        {"organ_id": "can_interface"},
+        {"organ_id": "door_locks"},
+        {"organ_id": "windows"},
+        {"organ_id": "hvac"},
+        {"organ_id": "lighting"}
+      ]
+    }
+  ]
+}
