@@ -45,7 +45,9 @@ class TestPipelineProvisioning(unittest.TestCase):
             with self.assertRaises(FileNotFoundError):
                 provision_runtime_pipeline(capability_context=self.context(), paths=paths)
 
-    def test_pipeline_starts_empty_and_safety_denies(self):
+    @patch("services.pipeline_provisioning.make_execution_receipt_sink")
+    def test_pipeline_starts_empty_and_safety_denies(self, make_sink):
+        make_sink.return_value = lambda envelope: envelope
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             policy = root / "court.json"
