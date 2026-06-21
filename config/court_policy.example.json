@@ -1,0 +1,28 @@
+{
+  "schema": "velvet.court.policy.v1",
+  "policies": [
+    {
+      "policy_id": "owner_present_default",
+      "status": "active",
+      "allowed_capabilities": [
+        "observe.telemetry",
+        "comfort.request",
+        "visibility.request",
+        "access.request",
+        "owner.maintenance_request"
+      ],
+      "allowed_targets": ["*"],
+      "token_ttl_seconds": 30
+    },
+    {
+      "policy_id": "guest_restricted_default",
+      "status": "active",
+      "allowed_capabilities": [
+        "observe.telemetry",
+        "comfort.request"
+      ],
+      "allowed_targets": ["cabin", "media", "telemetry"],
+      "token_ttl_seconds": 15
+    }
+  ]
+}
