@@ -1,0 +1,26 @@
+{
+  "schema": "velvet.capability.context.v1",
+  "policies": [
+    {
+      "policy_id": "owner_present_default",
+      "authority_profile": "owner_present",
+      "status": "active",
+      "proposed_capabilities": [
+        "observe.telemetry",
+        "comfort.request",
+        "visibility.request",
+        "access.request",
+        "owner.maintenance_request"
+      ]
+    },
+    {
+      "policy_id": "guest_restricted_default",
+      "authority_profile": "guest_restricted",
+      "status": "active",
+      "proposed_capabilities": [
+        "observe.telemetry",
+        "comfort.request"
+      ]
+    }
+  ]
+}
