@@ -51,10 +51,16 @@ class SafetyGateRegistry:
             return False, "no matching safety gate is registered"
         if len(matches) != 1:
             return False, "multiple safety gates match capability and target"
-        allowed, reason = matches[0].check(token, parameters)
+
+        gate = matches[0]
+        try:
+            allowed, reason = gate.check(token, parameters)
+        except Exception as exc:
+            return False, f"safety gate {gate.name} failed: {exc}"
+
         if allowed is not True:
-            return False, reason or f"safety gate {matches[0].name} denied execution"
-        return True, reason or f"safety gate {matches[0].name} approved execution"
+            return False, reason or f"safety gate {gate.name} denied execution"
+        return True, reason or f"safety gate {gate.name} approved execution"
 
     def names(self) -> tuple[str, ...]:
         return tuple(sorted(self._gates))
