@@ -39,6 +39,19 @@ continuity:
     capability_context_path: VELVET_CAPABILITY_CONTEXT_PATH
     receipt_ledger_path: VELVET_CONTINUITY_RECEIPTS_PATH
 
+execution_pipeline:
+  court_policy_path: /opt/velvet/state/policy/court_policy.json
+  court_signing_key_path: /opt/velvet/state/court/signing_key.bin
+  replay_ledger_path: /opt/velvet/state/execution/consumed_tokens.jsonl
+  receipt_ledger_path: /opt/velvet/state/receipts/execution.log
+  executor_registry: empty
+  safety_default: deny
+  environment_overrides:
+    court_policy_path: VELVET_COURT_POLICY_PATH
+    court_signing_key_path: VELVET_COURT_SIGNING_KEY_PATH
+    replay_ledger_path: VELVET_TOKEN_REPLAY_LEDGER_PATH
+    receipt_ledger_path: VELVET_EXECUTION_RECEIPTS_PATH
+
 events:
   enforce_receipt_on_actuation: true
 
