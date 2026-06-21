@@ -62,9 +62,10 @@ def provision_founder(
         verify_lineage_chain,
     )
 
+    label = surface_label.strip()
     if authority_level < 0:
         raise ValueError("authority_level must be zero or greater")
-    if not surface_label.strip():
+    if not label:
         raise ValueError("surface_label must be non-empty")
     if not model_label.strip():
         raise ValueError("model_label must be non-empty")
@@ -79,12 +80,7 @@ def provision_founder(
     surface_meta_path = continuity_dir / "surface_identity.json"
     receipt_path = receipts_dir / "continuity.log"
 
-    protected_paths = [
-        identity_path,
-        proof_path,
-        surface_path,
-        surface_meta_path,
-    ]
+    protected_paths = [identity_path, proof_path, surface_path, surface_meta_path]
     existing = [path for path in protected_paths if path.exists()]
     if existing and not force:
         joined = ", ".join(str(path) for path in existing)
@@ -101,7 +97,7 @@ def provision_founder(
         raise ValueError("proof material must contain at least 32 bytes")
 
     identity = surface_identity or collect_surface_identity(
-        surface_label=surface_label,
+        surface_label=label,
         reader=surface_reader,
         architecture=architecture,
     )
@@ -138,6 +134,7 @@ def provision_founder(
         json.dumps(
             {
                 "schema": "velvet.surface.metadata.v1",
+                "surface_label": label,
                 "collector": identity.collector,
                 "fingerprint": identity.fingerprint,
                 "fact_names": sorted(identity.facts),
