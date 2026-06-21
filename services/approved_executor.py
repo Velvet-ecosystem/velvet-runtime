@@ -79,29 +79,29 @@ def execute_authorized(
 
     name = _normalized(executor_name)
     if token.token_id in used_token_ids:
-        return _denied("token_replay", name, token, ("capability token was already consumed",))
+        return _deny("token_replay", name, token, ("capability token was already consumed",), receipt_sink)
 
     if not verify_token(token, signing_key=signing_key, now=now):
-        return _denied("invalid_token", name, token, ("capability token failed signature or expiry verification",))
+        return _deny("invalid_token", name, token, ("capability token failed signature or expiry verification",), receipt_sink)
 
     try:
         spec = registry.get(name)
     except KeyError as exc:
-        return _denied("executor_not_registered", name, token, (str(exc),))
+        return _deny("executor_not_registered", name, token, (str(exc),), receipt_sink)
 
     if spec.capability != token.capability:
-        return _denied("executor_capability_mismatch", name, token, ("executor is not bound to token capability",))
+        return _deny("executor_capability_mismatch", name, token, ("executor is not bound to token capability",), receipt_sink)
     if "*" not in spec.targets and token.target not in spec.targets:
-        return _denied("executor_target_mismatch", name, token, ("executor is not bound to token target",))
+        return _deny("executor_target_mismatch", name, token, ("executor is not bound to token target",), receipt_sink)
 
     safe, reason = safety_check(token, parameters)
     if safe is not True:
-        return _denied("safety_denied", name, token, (reason or "safety check denied execution",))
+        return _deny("safety_denied", name, token, (reason or "safety check denied execution",), receipt_sink)
 
     start_receipt = _receipt(
         "EXECUTION_STARTED",
         "started",
-        spec,
+        spec.name,
         token,
         output=None,
         errors=(),
@@ -117,11 +117,11 @@ def execute_authorized(
         failed = _receipt(
             "EXECUTION_FAILED",
             "failed",
-            spec,
+            spec.name,
             token,
             output=None,
             errors=(str(exc),),
-            actuation_performed=False,
+            actuation_performed=None,
         )
         persisted = _persist(failed, receipt_sink)
         return ExecutionResult(False, "executor_failed", name, token.token_id, None, True, persisted, (str(exc),))
@@ -129,7 +129,7 @@ def execute_authorized(
     completed = _receipt(
         "EXECUTION_COMPLETED",
         "completed",
-        spec,
+        spec.name,
         token,
         output=output,
         errors=(),
@@ -141,18 +141,28 @@ def execute_authorized(
     return ExecutionResult(True, state, name, token.token_id, output, True, final_persisted, errors)
 
 
-def _denied(state: str, name: str, token: CapabilityToken, errors: tuple[str, ...]) -> ExecutionResult:
-    return ExecutionResult(False, state, name, token.token_id, None, False, False, errors)
+def _deny(state, name, token, errors, receipt_sink):
+    receipt = _receipt(
+        "EXECUTION_DENIED",
+        state,
+        name,
+        token,
+        output=None,
+        errors=errors,
+        actuation_performed=False,
+    )
+    persisted = _persist(receipt, receipt_sink)
+    return ExecutionResult(False, state, name, token.token_id, None, False, persisted, errors)
 
 
-def _receipt(event_type, state, spec, token, *, output, errors, actuation_performed):
+def _receipt(event_type, state, executor_name, token, *, output, errors, actuation_performed):
     return {
         "event_type": event_type,
         "source": "velvet-runtime",
         "subject_id": token.profile_id,
         "payload": {
             "state": state,
-            "executor_name": spec.name,
+            "executor_name": executor_name,
             "token_id": token.token_id,
             "intent_id": token.intent_id,
             "capability": token.capability,
