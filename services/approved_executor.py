@@ -1,0 +1,180 @@
+# SPDX-License-Identifier: GPL-3.0-only
+"""Approved, named executor contract for Velvet Runtime.
+
+Executors are registered code paths. They receive only validated parameters
+after Court-token verification, executor binding, safety approval, replay checks,
+and persistence of an execution-start receipt.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Callable, Mapping, MutableSet
+
+from services.court_token import CapabilityToken, verify_token
+
+
+Executor = Callable[[Mapping[str, Any]], Mapping[str, Any]]
+SafetyCheck = Callable[[CapabilityToken, Mapping[str, Any]], tuple[bool, str]]
+ReceiptSink = Callable[[dict[str, Any]], Any]
+
+
+@dataclass(frozen=True)
+class ExecutorSpec:
+    name: str
+    capability: str
+    targets: tuple[str, ...]
+    handler: Executor
+
+
+@dataclass(frozen=True)
+class ExecutionResult:
+    executed: bool
+    state: str
+    executor_name: str
+    token_id: str
+    output: Mapping[str, Any] | None
+    start_receipt_persisted: bool
+    final_receipt_persisted: bool
+    errors: tuple[str, ...] = ()
+
+
+class ExecutorRegistry:
+    def __init__(self) -> None:
+        self._executors: dict[str, ExecutorSpec] = {}
+
+    def register(self, spec: ExecutorSpec) -> None:
+        name = _normalized(spec.name)
+        capability = _normalized(spec.capability)
+        targets = tuple(sorted({_normalized(value) for value in spec.targets}))
+        if not name or not capability or not targets:
+            raise ValueError("executor name, capability, and targets are required")
+        if not callable(spec.handler):
+            raise ValueError("executor handler must be callable")
+        if name in self._executors:
+            raise ValueError(f"executor {name!r} is already registered")
+        self._executors[name] = ExecutorSpec(name, capability, targets, spec.handler)
+
+    def get(self, name: str) -> ExecutorSpec:
+        normalized = _normalized(name)
+        try:
+            return self._executors[normalized]
+        except KeyError as exc:
+            raise KeyError(f"executor {normalized!r} is not registered") from exc
+
+
+def execute_authorized(
+    *,
+    token: CapabilityToken,
+    executor_name: str,
+    parameters: Mapping[str, Any],
+    registry: ExecutorRegistry,
+    signing_key: bytes,
+    safety_check: SafetyCheck,
+    receipt_sink: ReceiptSink,
+    used_token_ids: MutableSet[str],
+    now: int | None = None,
+) -> ExecutionResult:
+    """Execute one registered handler after every required gate passes."""
+
+    name = _normalized(executor_name)
+    if token.token_id in used_token_ids:
+        return _denied("token_replay", name, token, ("capability token was already consumed",))
+
+    if not verify_token(token, signing_key=signing_key, now=now):
+        return _denied("invalid_token", name, token, ("capability token failed signature or expiry verification",))
+
+    try:
+        spec = registry.get(name)
+    except KeyError as exc:
+        return _denied("executor_not_registered", name, token, (str(exc),))
+
+    if spec.capability != token.capability:
+        return _denied("executor_capability_mismatch", name, token, ("executor is not bound to token capability",))
+    if "*" not in spec.targets and token.target not in spec.targets:
+        return _denied("executor_target_mismatch", name, token, ("executor is not bound to token target",))
+
+    safe, reason = safety_check(token, parameters)
+    if safe is not True:
+        return _denied("safety_denied", name, token, (reason or "safety check denied execution",))
+
+    start_receipt = _receipt(
+        "EXECUTION_STARTED",
+        "started",
+        spec,
+        token,
+        output=None,
+        errors=(),
+        actuation_performed=False,
+    )
+    if not _persist(start_receipt, receipt_sink):
+        return ExecutionResult(False, "start_receipt_unpersisted", name, token.token_id, None, False, False, ("execution-start receipt could not be persisted",))
+
+    used_token_ids.add(token.token_id)
+    try:
+        output = dict(spec.handler(dict(parameters)))
+    except Exception as exc:
+        failed = _receipt(
+            "EXECUTION_FAILED",
+            "failed",
+            spec,
+            token,
+            output=None,
+            errors=(str(exc),),
+            actuation_performed=False,
+        )
+        persisted = _persist(failed, receipt_sink)
+        return ExecutionResult(False, "executor_failed", name, token.token_id, None, True, persisted, (str(exc),))
+
+    completed = _receipt(
+        "EXECUTION_COMPLETED",
+        "completed",
+        spec,
+        token,
+        output=output,
+        errors=(),
+        actuation_performed=bool(output.get("actuation_performed", False)),
+    )
+    final_persisted = _persist(completed, receipt_sink)
+    state = "completed" if final_persisted else "completed_unreceipted"
+    errors = () if final_persisted else ("final execution receipt could not be persisted",)
+    return ExecutionResult(True, state, name, token.token_id, output, True, final_persisted, errors)
+
+
+def _denied(state: str, name: str, token: CapabilityToken, errors: tuple[str, ...]) -> ExecutionResult:
+    return ExecutionResult(False, state, name, token.token_id, None, False, False, errors)
+
+
+def _receipt(event_type, state, spec, token, *, output, errors, actuation_performed):
+    return {
+        "event_type": event_type,
+        "source": "velvet-runtime",
+        "subject_id": token.profile_id,
+        "payload": {
+            "state": state,
+            "executor_name": spec.name,
+            "token_id": token.token_id,
+            "intent_id": token.intent_id,
+            "capability": token.capability,
+            "target": token.target,
+            "body_id": token.body_id,
+            "surface": token.surface,
+            "output": output,
+            "errors": list(errors),
+            "actuation_performed": actuation_performed,
+        },
+    }
+
+
+def _persist(receipt: dict[str, Any], sink: ReceiptSink) -> bool:
+    try:
+        sink(receipt)
+    except Exception:
+        return False
+    return True
+
+
+def _normalized(value: str) -> str:
+    if not isinstance(value, str):
+        return ""
+    return " ".join(value.strip().split()).lower()
