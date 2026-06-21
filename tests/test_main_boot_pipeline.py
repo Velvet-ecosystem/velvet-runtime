@@ -4,7 +4,7 @@ import os
 import sys
 import unittest
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -35,12 +35,14 @@ class TestMainBootPipeline(unittest.TestCase):
         self, build_runtime, resolve_paths, load_context, run_gate,
         boot_passed, provision_pipeline, module_loader, signal_mock,
     ):
+        order = []
         build_runtime.return_value = {"publish": object()}
         resolve_paths.return_value = object()
         load_context.return_value = self.context
         run_gate.return_value = self.continuity
-        provision_pipeline.return_value = object()
+        provision_pipeline.side_effect = lambda **kwargs: order.append("pipeline") or object()
         loader = module_loader.return_value
+        loader.load_all.side_effect = lambda: order.append("modules")
 
         runtime_main.main()
 
@@ -48,11 +50,7 @@ class TestMainBootPipeline(unittest.TestCase):
             capability_context=self.context.capability_context
         )
         loader.load_all.assert_called_once_with()
-        self.assertLess(
-            provision_pipeline.call_args_list[0].call_time
-            if hasattr(provision_pipeline.call_args_list[0], "call_time") else 0,
-            1,
-        )
+        self.assertEqual(order, ["pipeline", "modules"])
 
     @patch("main.signal.signal")
     @patch("main._run_recovery")
