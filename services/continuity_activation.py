@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from services.body_binding import require_active_body
+from services.body_registry import load_active_body
 from services.continuity_boot import BootContinuityResult, verify_boot_continuity
 from services.continuity_receipt_sink import make_continuity_receipt_sink
 from services.continuity_store import load_identity_chain
@@ -20,6 +22,7 @@ class ContinuityBootPaths:
     identity_chain: Path
     proof_material: Path
     surface_metadata: Path
+    body_registry: Path
     receipt_ledger: Path
 
 
@@ -39,6 +42,10 @@ def resolve_continuity_paths() -> ContinuityBootPaths:
         surface_metadata=Path(os.environ.get(
             "VELVET_SURFACE_METADATA_PATH",
             str(_DEFAULT_ROOT / "continuity" / "surface_identity.json"),
+        )),
+        body_registry=Path(os.environ.get(
+            "VELVET_BODY_REGISTRY_PATH",
+            str(_DEFAULT_ROOT / "body" / "registry.json"),
         )),
         receipt_ledger=Path(os.environ.get(
             "VELVET_CONTINUITY_RECEIPTS_PATH",
@@ -61,14 +68,31 @@ def run_configured_continuity_gate(
         reader=surface_reader,
         architecture=architecture,
     ).fingerprint
+
+    body = require_active_body(load_active_body(resolved.body_registry))
     identity_chain = load_identity_chain(resolved.identity_chain)
+
     resolved.receipt_ledger.parent.mkdir(parents=True, exist_ok=True)
-    receipt_sink = make_continuity_receipt_sink(resolved.receipt_ledger)
+    base_sink = make_continuity_receipt_sink(resolved.receipt_ledger)
+
+    def body_bound_sink(payload):
+        enriched = dict(payload)
+        nested = dict(enriched.get("payload", {}))
+        nested.update({
+            "body_id": body.body_id,
+            "body_type": body.body_type,
+            "body_surface": body.surface,
+            "body_fingerprint": body.fingerprint,
+            "body_verified": True,
+        })
+        enriched["payload"] = nested
+        return base_sink(enriched)
+
     return verify_boot_continuity(
         identity_chain=identity_chain,
         local_key=proof_material,
         active_surface_fingerprint=active_surface,
-        receipt_sink=receipt_sink,
+        receipt_sink=body_bound_sink,
     )
 
 
