@@ -1,0 +1,7 @@
+{
+  "schema": "velvet.session.context.v1",
+  "session_id": "boot-session-example",
+  "profile_id": "guest_default",
+  "verification_state": "unverified",
+  "physical_presence": false
+}

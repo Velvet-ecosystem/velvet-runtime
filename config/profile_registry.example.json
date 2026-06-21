@@ -1,0 +1,21 @@
+{
+  "schema": "velvet.profile.registry.v1",
+  "profiles": [
+    {
+      "profile_id": "primary_owner",
+      "profile_type": "owner",
+      "display_name": "Mister",
+      "address_preference": "Mister",
+      "authority_profile": "owner_present",
+      "status": "active"
+    },
+    {
+      "profile_id": "guest_default",
+      "profile_type": "guest",
+      "display_name": "Guest",
+      "address_preference": "Guest",
+      "authority_profile": "guest_restricted",
+      "status": "active"
+    }
+  ]
+}

@@ -15,6 +15,7 @@ from services.continuity_boot import BootContinuityResult, verify_boot_continuit
 from services.continuity_receipt_sink import make_continuity_receipt_sink
 from services.continuity_store import load_identity_chain
 from services.hardware_surface import collect_surface_identity
+from services.profile_binding import load_session_binding
 
 
 @dataclass(frozen=True)
@@ -23,6 +24,8 @@ class ContinuityBootPaths:
     proof_material: Path
     surface_metadata: Path
     body_registry: Path
+    profile_registry: Path
+    session_context: Path
     receipt_ledger: Path
 
 
@@ -47,6 +50,14 @@ def resolve_continuity_paths() -> ContinuityBootPaths:
             "VELVET_BODY_REGISTRY_PATH",
             str(_DEFAULT_ROOT / "body" / "registry.json"),
         )),
+        profile_registry=Path(os.environ.get(
+            "VELVET_PROFILE_REGISTRY_PATH",
+            str(_DEFAULT_ROOT / "profiles" / "registry.json"),
+        )),
+        session_context=Path(os.environ.get(
+            "VELVET_SESSION_CONTEXT_PATH",
+            str(_DEFAULT_ROOT / "session" / "current.json"),
+        )),
         receipt_ledger=Path(os.environ.get(
             "VELVET_CONTINUITY_RECEIPTS_PATH",
             str(_DEFAULT_ROOT / "receipts" / "continuity.log"),
@@ -70,12 +81,16 @@ def run_configured_continuity_gate(
     ).fingerprint
 
     body = require_active_body(load_active_body(resolved.body_registry))
+    session = load_session_binding(
+        resolved.profile_registry,
+        resolved.session_context,
+    )
     identity_chain = load_identity_chain(resolved.identity_chain)
 
     resolved.receipt_ledger.parent.mkdir(parents=True, exist_ok=True)
     base_sink = make_continuity_receipt_sink(resolved.receipt_ledger)
 
-    def body_bound_sink(payload):
+    def identity_bound_sink(payload):
         enriched = dict(payload)
         nested = dict(enriched.get("payload", {}))
         nested.update({
@@ -84,6 +99,13 @@ def run_configured_continuity_gate(
             "body_surface": body.surface,
             "body_fingerprint": body.fingerprint,
             "body_verified": True,
+            "profile_id": session.profile.profile_id,
+            "profile_type": session.profile.profile_type,
+            "address_preference": session.profile.address_preference,
+            "session_id": session.session_id,
+            "session_verification_state": session.verification_state,
+            "physical_presence": session.physical_presence,
+            "owner_verified": session.owner_verified,
         })
         enriched["payload"] = nested
         return base_sink(enriched)
@@ -92,7 +114,7 @@ def run_configured_continuity_gate(
         identity_chain=identity_chain,
         local_key=proof_material,
         active_surface_fingerprint=active_surface,
-        receipt_sink=body_bound_sink,
+        receipt_sink=identity_bound_sink,
     )
 
 
