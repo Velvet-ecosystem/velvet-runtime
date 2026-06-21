@@ -27,6 +27,7 @@ continuity:
   body_registry_path: /opt/velvet/state/body/registry.json
   profile_registry_path: /opt/velvet/state/profiles/registry.json
   session_context_path: /opt/velvet/state/session/current.json
+  capability_context_path: /opt/velvet/state/policy/capability_context.json
   receipt_ledger_path: /opt/velvet/state/receipts/continuity.log
   environment_overrides:
     identity_chain_path: VELVET_CONTINUITY_IDENTITY_PATH
@@ -35,6 +36,7 @@ continuity:
     body_registry_path: VELVET_BODY_REGISTRY_PATH
     profile_registry_path: VELVET_PROFILE_REGISTRY_PATH
     session_context_path: VELVET_SESSION_CONTEXT_PATH
+    capability_context_path: VELVET_CAPABILITY_CONTEXT_PATH
     receipt_ledger_path: VELVET_CONTINUITY_RECEIPTS_PATH
 
 events:
