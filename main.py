@@ -12,9 +12,8 @@ from services.continuity_activation import (
     resolve_continuity_paths,
     run_configured_continuity_gate,
 )
-from services.module_loader import ModuleLoader
-from services.pipeline_provisioning import provision_runtime_pipeline
 from services.recovery_mode import enter_recovery_mode
+from services.secure_boot_services import provision_pipeline_then_load_modules
 
 logger = get_logger("velvet.main")
 _SHUTDOWN = False
@@ -68,26 +67,20 @@ def main():
     logger.info("[BOOT] Continuity verified and receipted.")
 
     try:
-        execution_pipeline = provision_runtime_pipeline(
-            capability_context=identity_context.capability_context,
+        execution_pipeline = provision_pipeline_then_load_modules(
+            identity_context=identity_context,
+            safe_publish=runtime["publish"],
         )
     except Exception as exc:
-        _run_recovery(f"execution pipeline provisioning failed: {exc}", continuity)
+        _run_recovery(f"secure boot service provisioning failed: {exc}", continuity)
         return
 
     logger.info(
-        "[BOOT] Execution pipeline provisioned with empty executor registry "
-        "and default-deny safety."
+        "[BOOT] Execution pipeline provisioned, modules loaded, "
+        "executor registry empty, safety default-deny."
     )
 
-    try:
-        loader = ModuleLoader(modules_dir="modules", safe_publish=runtime["publish"])
-        loader.load_all()
-    except Exception as exc:
-        logger.critical(f"[BOOT] Module loader failed: {exc}")
-        sys.exit(1)
-
-    logger.info("[BOOT] Module loader complete. Entering idle loop.")
+    logger.info("[BOOT] Entering idle loop.")
     while not _SHUTDOWN:
         _ = execution_pipeline
         time.sleep(1)
