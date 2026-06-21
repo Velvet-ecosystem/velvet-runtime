@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-only
 
+import inspect
 import os
 import sys
 import unittest
@@ -7,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+import runtime_wiring
 from services.optional_subsystems import activate_optional_subsystems
 
 
@@ -52,6 +54,12 @@ class TestOptionalSubsystems(unittest.TestCase):
         self.assertFalse(status.brain_present)
         self.assertFalse(status.interface_started)
         self.assertEqual(len(status.warnings), 2)
+
+    def test_base_runtime_wiring_contains_no_optional_activation(self):
+        source = inspect.getsource(runtime_wiring.build_runtime)
+        self.assertNotIn("BrainAdapter", source)
+        self.assertNotIn("InterfaceLifecycle", source)
+        self.assertNotIn("on_runtime_start", source)
 
 
 if __name__ == "__main__":
