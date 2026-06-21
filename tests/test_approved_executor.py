@@ -16,6 +16,22 @@ def make_token(key):
     return issue_token(intent=intent, policy_id="owner-default", signing_key=key, ttl_seconds=30, now=100)
 
 
+class FailingReplayLedger:
+    def __contains__(self, token_id):
+        return False
+
+    def consume(self, token_id):
+        raise OSError("ledger unavailable")
+
+
+class AlreadyConsumedLedger:
+    def __contains__(self, token_id):
+        return False
+
+    def consume(self, token_id):
+        return False
+
+
 class TestApprovedExecutor(unittest.TestCase):
     def setUp(self):
         self.key = b"k" * 32
@@ -45,6 +61,12 @@ class TestApprovedExecutor(unittest.TestCase):
         values.update(overrides)
         return execute_authorized(**values)
 
+    def test_registry_public_inspection(self):
+        self.assertEqual(self.registry.count(), 1)
+        self.assertEqual(self.registry.names(), ("cabin-comfort",))
+        self.assertTrue(self.registry.is_registered("cabin-comfort"))
+        self.assertFalse(self.registry.is_registered("missing"))
+
     def test_valid_token_executes_and_receipts(self):
         result = self.run_executor(parameters={"temperature": 21})
         self.assertTrue(result.executed)
@@ -57,6 +79,20 @@ class TestApprovedExecutor(unittest.TestCase):
         self.assertFalse(result.executed)
         self.assertEqual(result.state, "token_replay")
         self.assertEqual(self.receipts[0]["event_type"], "EXECUTION_DENIED")
+
+    def test_atomic_replay_loss_blocks_handler(self):
+        result = self.run_executor(used_token_ids=AlreadyConsumedLedger())
+        self.assertFalse(result.executed)
+        self.assertEqual(result.state, "token_replay")
+        self.assertEqual(self.calls, [])
+        self.assertEqual([item["event_type"] for item in self.receipts], ["EXECUTION_STARTED", "EXECUTION_DENIED"])
+
+    def test_replay_persistence_failure_blocks_handler(self):
+        result = self.run_executor(used_token_ids=FailingReplayLedger())
+        self.assertFalse(result.executed)
+        self.assertEqual(result.state, "replay_ledger_failed")
+        self.assertEqual(self.calls, [])
+        self.assertEqual([item["event_type"] for item in self.receipts], ["EXECUTION_STARTED", "EXECUTION_DENIED"])
 
     def test_safety_denial_blocks_handler(self):
         result = self.run_executor(safety_check=lambda token, params: (False, "unsafe"))

@@ -7,7 +7,11 @@ from types import SimpleNamespace
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from services.secure_boot_services import provision_pipeline_then_load_modules
+from services.secure_boot_services import (
+    ModuleLoadingError,
+    PipelineProvisioningError,
+    provision_pipeline_then_load_modules,
+)
 
 
 class TestSecureBootServices(unittest.TestCase):
@@ -52,7 +56,7 @@ class TestSecureBootServices(unittest.TestCase):
             def load_all(self):
                 loaded.append("loaded")
 
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(PipelineProvisioningError):
             provision_pipeline_then_load_modules(
                 identity_context=context,
                 safe_publish=object(),
@@ -61,6 +65,24 @@ class TestSecureBootServices(unittest.TestCase):
             )
 
         self.assertEqual(loaded, [])
+
+    def test_module_failure_is_distinct(self):
+        context = SimpleNamespace(capability_context=object())
+
+        class Loader:
+            def __init__(self, **kwargs):
+                pass
+
+            def load_all(self):
+                raise RuntimeError("bad module")
+
+        with self.assertRaises(ModuleLoadingError):
+            provision_pipeline_then_load_modules(
+                identity_context=context,
+                safe_publish=object(),
+                provisioner=lambda **kwargs: object(),
+                loader_factory=Loader,
+            )
 
 
 if __name__ == "__main__":

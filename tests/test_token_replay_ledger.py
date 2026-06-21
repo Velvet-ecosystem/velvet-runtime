@@ -16,12 +16,21 @@ class TestTokenReplayLedger(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "replay.jsonl"
             first = TokenReplayLedger(path)
-            first.add("token-abc")
+            self.assertTrue(first.consume("token-abc"))
 
             second = TokenReplayLedger(path)
             self.assertIn("token-abc", second)
 
-    def test_duplicate_add_is_idempotent(self):
+    def test_duplicate_consume_returns_false_and_writes_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "replay.jsonl"
+            first = TokenReplayLedger(path)
+            second = TokenReplayLedger(path)
+            self.assertTrue(first.consume("token-abc"))
+            self.assertFalse(second.consume("token-abc"))
+            self.assertEqual(len(path.read_text(encoding="utf-8").splitlines()), 1)
+
+    def test_add_remains_compatible_and_idempotent(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "replay.jsonl"
             ledger = TokenReplayLedger(path)
@@ -36,11 +45,13 @@ class TestTokenReplayLedger(unittest.TestCase):
             with self.assertRaises(ValueError):
                 TokenReplayLedger(path)
 
-    def test_snapshot_is_immutable(self):
+    def test_snapshot_is_immutable_and_fresh(self):
         with tempfile.TemporaryDirectory() as tmp:
-            ledger = TokenReplayLedger(Path(tmp) / "replay.jsonl")
-            ledger.add("token-abc")
-            self.assertEqual(ledger.snapshot(), frozenset({"token-abc"}))
+            path = Path(tmp) / "replay.jsonl"
+            first = TokenReplayLedger(path)
+            second = TokenReplayLedger(path)
+            first.consume("token-abc")
+            self.assertEqual(second.snapshot(), frozenset({"token-abc"}))
 
 
 if __name__ == "__main__":

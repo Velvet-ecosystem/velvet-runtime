@@ -58,7 +58,8 @@ class TestPipelineProvisioning(unittest.TestCase):
                 capability_context=self.context(),
                 paths=PipelinePaths(policy, key, root / "replay.jsonl", root / "execution.log"),
             )
-            self.assertEqual(pipeline.executor_registry._executors, {})
+            self.assertEqual(pipeline.executor_registry.count(), 0)
+            self.assertEqual(pipeline.executor_registry.names(), ())
             self.assertEqual(pipeline.safety_check(None, {}), (False, "runtime safety check is not provisioned"))
 
 

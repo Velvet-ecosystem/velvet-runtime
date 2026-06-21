@@ -13,7 +13,11 @@ from services.continuity_activation import (
     run_configured_continuity_gate,
 )
 from services.recovery_mode import enter_recovery_mode
-from services.secure_boot_services import provision_pipeline_then_load_modules
+from services.secure_boot_services import (
+    ModuleLoadingError,
+    PipelineProvisioningError,
+    provision_pipeline_then_load_modules,
+)
 
 logger = get_logger("velvet.main")
 _SHUTDOWN = False
@@ -71,8 +75,11 @@ def main():
             identity_context=identity_context,
             safe_publish=runtime["publish"],
         )
-    except Exception as exc:
-        _run_recovery(f"secure boot service provisioning failed: {exc}", continuity)
+    except PipelineProvisioningError as exc:
+        _run_recovery(f"execution pipeline provisioning failed: {exc}", continuity)
+        return
+    except ModuleLoadingError as exc:
+        _run_recovery(f"module loading failed: {exc}", continuity)
         return
 
     logger.info(
