@@ -10,6 +10,7 @@ from pathlib import Path
 from services.approved_executor import ExecutorRegistry
 from services.execution_receipt_sink import make_execution_receipt_sink
 from services.runtime_pipeline import RuntimePipeline
+from services.safety_gate_registry import SafetyGateRegistry
 from services.token_replay_ledger import TokenReplayLedger
 
 
@@ -57,16 +58,14 @@ def provision_runtime_pipeline(*, capability_context, paths: PipelinePaths | Non
     replay_ledger = TokenReplayLedger(resolved.replay_ledger)
     receipt_sink = make_execution_receipt_sink(resolved.receipt_ledger)
     executor_registry = ExecutorRegistry()
-
-    def deny_until_safety_is_provisioned(token, parameters):
-        return False, "runtime safety check is not provisioned"
+    safety_gate_registry = SafetyGateRegistry()
 
     return RuntimePipeline(
         capability_context=capability_context,
         court_policy_path=resolved.court_policy,
         signing_key=signing_key,
         executor_registry=executor_registry,
-        safety_check=deny_until_safety_is_provisioned,
+        safety_check=safety_gate_registry.evaluate,
         receipt_sink=receipt_sink,
         replay_ledger=replay_ledger,
     )
