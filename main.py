@@ -1,17 +1,4 @@
-"""
-velvet-runtime: main.py
-=======================
-Primary entrypoint for the Velvet AI runtime.
-
-Responsibilities:
-- Initialize the runtime via runtime_wiring.build_runtime()
-- Start the module loader
-- Enter a safe idle loop
-
-DOCTRINE: No actuation logic lives here. This is bootstrap only.
-runtime['publish'] is the sole publish path passed into the module loader.
-bus and enforcer are not accessible here.
-"""
+"""Primary entrypoint for the Velvet AI runtime."""
 
 import signal
 import sys
@@ -19,10 +6,10 @@ import time
 
 from velvet_logging.logger import get_logger
 from runtime_wiring import build_runtime
+from services.continuity_activation import continuity_boot_passed, run_configured_continuity_gate
 from services.module_loader import ModuleLoader
 
 logger = get_logger("velvet.main")
-
 _SHUTDOWN = False
 
 
@@ -34,36 +21,39 @@ def _handle_signal(signum, frame):
 
 def main():
     logger.info("[BOOT] === Velvet Runtime Starting ===")
-
     signal.signal(signal.SIGINT, _handle_signal)
     signal.signal(signal.SIGTERM, _handle_signal)
 
-    # Step 1: Build wired runtime
     try:
         runtime = build_runtime()
-    except Exception as e:
-        logger.critical(f"[BOOT] Runtime wiring failed: {e}")
+    except Exception as exc:
+        logger.critical(f"[BOOT] Runtime wiring failed: {exc}")
         sys.exit(1)
 
-    logger.info("[BOOT] Runtime wiring complete.")
-
-    # Step 2: Start module loader
-    # ModuleLoader receives only runtime["publish"] — the safe_publish
-    # closure built inside build_runtime(). main.py has no access to
-    # bus, enforcer, or any other runtime internal.
     try:
-        loader = ModuleLoader(
-            modules_dir="modules",
-            safe_publish=runtime["publish"],
+        continuity = run_configured_continuity_gate()
+    except Exception as exc:
+        logger.critical(f"[BOOT] Continuity verification failed: {exc}")
+        sys.exit(1)
+
+    if not continuity_boot_passed(continuity):
+        logger.critical(
+            f"[BOOT] Continuity denied boot: state={continuity.state}, "
+            f"persisted={continuity.receipt_persisted}, "
+            f"authority={continuity.authority_level}"
         )
+        sys.exit(1)
+
+    logger.info("[BOOT] Continuity verified and receipted.")
+
+    try:
+        loader = ModuleLoader(modules_dir="modules", safe_publish=runtime["publish"])
         loader.load_all()
-    except Exception as e:
-        logger.critical(f"[BOOT] Module loader failed: {e}")
+    except Exception as exc:
+        logger.critical(f"[BOOT] Module loader failed: {exc}")
         sys.exit(1)
 
     logger.info("[BOOT] Module loader complete. Entering idle loop.")
-
-    # Step 3: Safe idle loop
     while not _SHUTDOWN:
         time.sleep(1)
 
