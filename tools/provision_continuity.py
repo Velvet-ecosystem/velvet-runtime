@@ -1,15 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-only
-"""Provision the local founder continuity state for Velvet Runtime.
-
-This tool creates four local artifacts outside the repository:
-
-- proof material
-- active surface fingerprint
-- founder identity chain
-- continuity receipt directory
-
-It refuses to overwrite existing identity material unless --force is supplied.
-"""
+"""Provision local founder continuity state for Velvet Runtime."""
 
 from __future__ import annotations
 
@@ -19,7 +9,9 @@ import json
 import os
 import secrets
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
+
+from services.surface_identity import collect_surface_identity
 
 
 DEFAULT_ROOT = Path("/opt/velvet/state")
@@ -29,37 +21,22 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Provision Velvet founder continuity state on a local node."
     )
-    parser.add_argument(
-        "--root",
-        type=Path,
-        default=DEFAULT_ROOT,
-        help="Local Velvet state root. Default: /opt/velvet/state",
-    )
+    parser.add_argument("--root", type=Path, default=DEFAULT_ROOT)
     parser.add_argument(
         "--surface-label",
         default="founder-tiburon",
-        help="Stable label included in the surface fingerprint.",
+        help="Intentional installation label combined with collected hardware facts.",
     )
-    parser.add_argument(
-        "--model-label",
-        default="velvet-runtime-founder",
-        help="Model or firmware label hashed into the founder record.",
-    )
+    parser.add_argument("--model-label", default="velvet-runtime-founder")
     parser.add_argument(
         "--genesis-note",
         default="Velvet founder provisioning ceremony",
-        help="Human-readable genesis context. Stored only as a hash.",
     )
-    parser.add_argument(
-        "--authority-level",
-        type=int,
-        default=1,
-        help="Initial authority level. Must be zero or greater.",
-    )
+    parser.add_argument("--authority-level", type=int, default=1)
     parser.add_argument(
         "--force",
         action="store_true",
-        help="Replace existing continuity files. Use only during deliberate recovery.",
+        help="Replace existing continuity files during deliberate recovery.",
     )
     return parser
 
@@ -73,12 +50,13 @@ def provision_founder(
     authority_level: int = 1,
     force: bool = False,
     proof_bytes: bytes | None = None,
+    surface_reader: Callable[[Path], str | None] | None = None,
+    architecture: str | None = None,
 ) -> dict[str, Any]:
     """Create and verify founder continuity files under ``root``."""
 
     from velvet_continuity import (
         create_genesis_identity,
-        generate_surface_fingerprint,
         stable_hash,
         verify_lineage_chain,
     )
@@ -97,9 +75,10 @@ def provision_founder(
     identity_path = continuity_dir / "identity_chain.json"
     proof_path = continuity_dir / "proof_material.bin"
     surface_path = continuity_dir / "active_surface.fingerprint"
+    surface_meta_path = continuity_dir / "surface_identity.json"
     receipt_path = receipts_dir / "continuity.log"
 
-    protected_paths = [identity_path, proof_path, surface_path]
+    protected_paths = [identity_path, proof_path, surface_path, surface_meta_path]
     existing = [path for path in protected_paths if path.exists()]
     if existing and not force:
         joined = ", ".join(str(path) for path in existing)
@@ -115,14 +94,18 @@ def provision_founder(
     if not isinstance(proof_material, bytes) or len(proof_material) < 32:
         raise ValueError("proof material must contain at least 32 bytes")
 
-    surface_fingerprint = generate_surface_fingerprint(surface_label)
+    surface_identity = collect_surface_identity(
+        installation_label=surface_label,
+        read_text=surface_reader,
+        architecture=architecture,
+    )
     model_fingerprint = stable_hash(model_label.strip().encode("utf-8"))
     genesis_proof = hashlib.sha256(genesis_note.strip().encode("utf-8")).hexdigest()
 
     record = create_genesis_identity(
         genesis_proof=genesis_proof,
         model_fp=model_fingerprint,
-        surface_fp=surface_fingerprint,
+        surface_fp=surface_identity.fingerprint,
         local_key=proof_material,
         active_context_hashes=[],
         authority_level=authority_level,
@@ -142,7 +125,12 @@ def provision_founder(
         )
 
     _atomic_write_bytes(proof_path, proof_material, mode=0o600)
-    _atomic_write_text(surface_path, surface_fingerprint + "\n", mode=0o600)
+    _atomic_write_text(surface_path, surface_identity.fingerprint + "\n", mode=0o600)
+    _atomic_write_text(
+        surface_meta_path,
+        json.dumps(surface_identity.public_summary(), indent=2, sort_keys=True) + "\n",
+        mode=0o600,
+    )
     _atomic_write_text(
         identity_path,
         json.dumps({"records": [record.to_dict()]}, indent=2, sort_keys=True) + "\n",
@@ -153,9 +141,12 @@ def provision_founder(
         "identity_path": str(identity_path),
         "proof_path": str(proof_path),
         "surface_path": str(surface_path),
+        "surface_metadata_path": str(surface_meta_path),
         "receipt_path": str(receipt_path),
         "identity_id": record.id,
-        "surface_fingerprint": surface_fingerprint,
+        "surface_fingerprint": surface_identity.fingerprint,
+        "hardware_class": surface_identity.hardware_class,
+        "collector": surface_identity.collector,
         "authority_level": verified_authority,
         "verified": True,
     }
@@ -195,6 +186,8 @@ def main() -> int:
     print("Velvet founder continuity provisioned.")
     print(f"Identity: {result['identity_id']}")
     print(f"Authority: {result['authority_level']}")
+    print(f"Hardware class: {result['hardware_class']}")
+    print(f"Collector: {result['collector']}")
     print(f"Identity chain: {result['identity_path']}")
     print(f"Surface fingerprint: {result['surface_path']}")
     print(f"Continuity receipts: {result['receipt_path']}")
