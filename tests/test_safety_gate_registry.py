@@ -66,6 +66,23 @@ class TestSafetyGateRegistry(unittest.TestCase):
         allowed, _ = registry.evaluate(self.token, {})
         self.assertFalse(allowed)
 
+    def test_gate_exception_fails_closed(self):
+        registry = SafetyGateRegistry()
+
+        def fail(token, params):
+            raise RuntimeError("sensor unavailable")
+
+        registry.register(SafetyGateSpec(
+            "cabin-comfort-gate",
+            "comfort.request",
+            ("cabin",),
+            fail,
+        ))
+        self.assertEqual(
+            registry.evaluate(self.token, {}),
+            (False, "safety gate cabin-comfort-gate failed: sensor unavailable"),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
