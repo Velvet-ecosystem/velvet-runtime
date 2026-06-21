@@ -11,6 +11,7 @@ from typing import Callable
 
 from services.body_binding import require_active_body
 from services.body_registry import load_active_body
+from services.capability_context import build_capability_context
 from services.continuity_boot import BootContinuityResult, verify_boot_continuity
 from services.continuity_receipt_sink import make_continuity_receipt_sink
 from services.continuity_store import load_identity_chain
@@ -26,6 +27,7 @@ class ContinuityBootPaths:
     body_registry: Path
     profile_registry: Path
     session_context: Path
+    capability_policy: Path
     receipt_ledger: Path
 
 
@@ -58,6 +60,10 @@ def resolve_continuity_paths() -> ContinuityBootPaths:
             "VELVET_SESSION_CONTEXT_PATH",
             str(_DEFAULT_ROOT / "session" / "current.json"),
         )),
+        capability_policy=Path(os.environ.get(
+            "VELVET_CAPABILITY_CONTEXT_PATH",
+            str(_DEFAULT_ROOT / "policy" / "capability_context.json"),
+        )),
         receipt_ledger=Path(os.environ.get(
             "VELVET_CONTINUITY_RECEIPTS_PATH",
             str(_DEFAULT_ROOT / "receipts" / "continuity.log"),
@@ -85,6 +91,11 @@ def run_configured_continuity_gate(
         resolved.profile_registry,
         resolved.session_context,
     )
+    capability_context = build_capability_context(
+        policy_path=resolved.capability_policy,
+        session=session,
+        body=body,
+    )
     identity_chain = load_identity_chain(resolved.identity_chain)
 
     resolved.receipt_ledger.parent.mkdir(parents=True, exist_ok=True)
@@ -106,6 +117,10 @@ def run_configured_continuity_gate(
             "session_verification_state": session.verification_state,
             "physical_presence": session.physical_presence,
             "owner_verified": session.owner_verified,
+            "capability_policy_id": capability_context.policy_id,
+            "proposed_capabilities": list(capability_context.proposed_capabilities),
+            "authorization_required": capability_context.authorization_required,
+            "actuation_granted": capability_context.actuation_granted,
         })
         enriched["payload"] = nested
         return base_sink(enriched)
