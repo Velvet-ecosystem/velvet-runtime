@@ -31,6 +31,13 @@ class ContinuityBootPaths:
     receipt_ledger: Path
 
 
+@dataclass(frozen=True)
+class ConfiguredIdentityContext:
+    body: object
+    session: object
+    capability_context: object
+
+
 _DEFAULT_ROOT = Path("/opt/velvet/state")
 
 
@@ -71,21 +78,10 @@ def resolve_continuity_paths() -> ContinuityBootPaths:
     )
 
 
-def run_configured_continuity_gate(
+def load_configured_identity_context(
     paths: ContinuityBootPaths | None = None,
-    *,
-    surface_reader: Callable[[Path], str | None] | None = None,
-    architecture: str | None = None,
-) -> BootContinuityResult:
+) -> ConfiguredIdentityContext:
     resolved = paths or resolve_continuity_paths()
-    proof_material = _read_required_bytes(resolved.proof_material, "proof material")
-    surface_label = _load_surface_label(resolved.surface_metadata)
-    active_surface = collect_surface_identity(
-        surface_label=surface_label,
-        reader=surface_reader,
-        architecture=architecture,
-    ).fingerprint
-
     body = require_active_body(load_active_body(resolved.body_registry))
     session = load_session_binding(
         resolved.profile_registry,
@@ -96,6 +92,29 @@ def run_configured_continuity_gate(
         session=session,
         body=body,
     )
+    return ConfiguredIdentityContext(body, session, capability_context)
+
+
+def run_configured_continuity_gate(
+    paths: ContinuityBootPaths | None = None,
+    *,
+    surface_reader: Callable[[Path], str | None] | None = None,
+    architecture: str | None = None,
+    identity_context: ConfiguredIdentityContext | None = None,
+) -> BootContinuityResult:
+    resolved = paths or resolve_continuity_paths()
+    proof_material = _read_required_bytes(resolved.proof_material, "proof material")
+    surface_label = _load_surface_label(resolved.surface_metadata)
+    active_surface = collect_surface_identity(
+        surface_label=surface_label,
+        reader=surface_reader,
+        architecture=architecture,
+    ).fingerprint
+
+    configured = identity_context or load_configured_identity_context(resolved)
+    body = configured.body
+    session = configured.session
+    capability_context = configured.capability_context
     identity_chain = load_identity_chain(resolved.identity_chain)
 
     resolved.receipt_ledger.parent.mkdir(parents=True, exist_ok=True)

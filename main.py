@@ -6,9 +6,14 @@ import time
 
 from velvet_logging.logger import get_logger
 from runtime_wiring import build_runtime
-from services.continuity_activation import continuity_boot_passed, run_configured_continuity_gate
-from services.module_loader import ModuleLoader
+from services.continuity_activation import (
+    continuity_boot_passed,
+    load_configured_identity_context,
+    resolve_continuity_paths,
+    run_configured_continuity_gate,
+)
 from services.recovery_mode import enter_recovery_mode
+from services.secure_boot_services import provision_pipeline_then_load_modules
 
 logger = get_logger("velvet.main")
 _SHUTDOWN = False
@@ -45,7 +50,12 @@ def main():
         sys.exit(1)
 
     try:
-        continuity = run_configured_continuity_gate()
+        continuity_paths = resolve_continuity_paths()
+        identity_context = load_configured_identity_context(continuity_paths)
+        continuity = run_configured_continuity_gate(
+            continuity_paths,
+            identity_context=identity_context,
+        )
     except Exception as exc:
         _run_recovery(f"continuity verification failed: {exc}")
         return
@@ -57,14 +67,22 @@ def main():
     logger.info("[BOOT] Continuity verified and receipted.")
 
     try:
-        loader = ModuleLoader(modules_dir="modules", safe_publish=runtime["publish"])
-        loader.load_all()
+        execution_pipeline = provision_pipeline_then_load_modules(
+            identity_context=identity_context,
+            safe_publish=runtime["publish"],
+        )
     except Exception as exc:
-        logger.critical(f"[BOOT] Module loader failed: {exc}")
-        sys.exit(1)
+        _run_recovery(f"secure boot service provisioning failed: {exc}", continuity)
+        return
 
-    logger.info("[BOOT] Module loader complete. Entering idle loop.")
+    logger.info(
+        "[BOOT] Execution pipeline provisioned, modules loaded, "
+        "executor registry empty, safety default-deny."
+    )
+
+    logger.info("[BOOT] Entering idle loop.")
     while not _SHUTDOWN:
+        _ = execution_pipeline
         time.sleep(1)
 
     logger.info("[BOOT] === Velvet Runtime Shutdown ===")
