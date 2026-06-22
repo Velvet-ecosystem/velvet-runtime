@@ -18,8 +18,14 @@ class TestPipelineProvisioning(unittest.TestCase):
     def context(self):
         return SimpleNamespace(
             policy_id="owner-default",
-            proposed_capabilities=("comfort.request",),
+            authority_profile="owner",
+            profile_id="owner",
+            body_id="tiburon_v0",
+            surface="drive",
+            session_id="session-1",
+            proposed_capabilities=("observe.telemetry",),
             authorization_required=True,
+            actuation_granted=False,
         )
 
     def test_environment_overrides_paths(self):
@@ -46,7 +52,7 @@ class TestPipelineProvisioning(unittest.TestCase):
                 provision_runtime_pipeline(capability_context=self.context(), paths=paths)
 
     @patch("services.pipeline_provisioning.make_execution_receipt_sink")
-    def test_pipeline_starts_empty_and_safety_denies(self, make_sink):
+    def test_pipeline_starts_with_read_only_status_only(self, make_sink):
         make_sink.return_value = lambda envelope: envelope
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -58,12 +64,17 @@ class TestPipelineProvisioning(unittest.TestCase):
                 capability_context=self.context(),
                 paths=PipelinePaths(policy, key, root / "replay.jsonl", root / "execution.log"),
             )
-            self.assertEqual(pipeline.executor_registry.count(), 0)
-            self.assertEqual(pipeline.executor_registry.names(), ())
+            self.assertEqual(pipeline.executor_registry.count(), 1)
+            self.assertEqual(pipeline.executor_registry.names(), ("runtime-status",))
             token = SimpleNamespace(capability="comfort.request", target="cabin")
             self.assertEqual(
                 pipeline.safety_check(token, {}),
                 (False, "no matching safety gate is registered"),
+            )
+            status_token = SimpleNamespace(capability="observe.telemetry", target="telemetry")
+            self.assertEqual(
+                pipeline.safety_check(status_token, {}),
+                (True, "read-only runtime observation"),
             )
 
 
