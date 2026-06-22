@@ -90,10 +90,7 @@ def request_can_observation(
     intent_id: str | None = None,
     now: int | None = None,
 ) -> LocalStatusResponse:
-    if isinstance(max_frames, bool) or not isinstance(max_frames, int):
-        raise TypeError("max_frames must be an integer")
-    if max_frames < 1 or max_frames > 100:
-        raise ValueError("max_frames must be between 1 and 100")
+    _validate_int_range("max_frames", max_frames, 1, 100)
     return _request_observation(
         route_id="can-observe",
         prefix="can",
@@ -104,9 +101,45 @@ def request_can_observation(
     )
 
 
+def request_can_signal_summary(
+    *,
+    max_frames: int = 32,
+    minimum_confidence: float = 0.5,
+    max_signals: int = 16,
+    gateway=None,
+    intent_id: str | None = None,
+    now: int | None = None,
+) -> LocalStatusResponse:
+    _validate_int_range("max_frames", max_frames, 1, 100)
+    if isinstance(minimum_confidence, bool) or not isinstance(minimum_confidence, (int, float)):
+        raise TypeError("minimum_confidence must be numeric")
+    if minimum_confidence < 0.0 or minimum_confidence > 1.0:
+        raise ValueError("minimum_confidence must be between 0 and 1")
+    _validate_int_range("max_signals", max_signals, 1, 32)
+    return _request_observation(
+        route_id="can-signals",
+        prefix="can-signals",
+        parameters={
+            "max_frames": max_frames,
+            "minimum_confidence": float(minimum_confidence),
+            "max_signals": max_signals,
+        },
+        gateway=gateway,
+        intent_id=intent_id,
+        now=now,
+    )
+
+
 def _validate_detail(detail: str) -> None:
     if detail not in {"summary", "full"}:
         raise ValueError("detail must be 'summary' or 'full'")
+
+
+def _validate_int_range(name: str, value: int, minimum: int, maximum: int) -> None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"{name} must be an integer")
+    if value < minimum or value > maximum:
+        raise ValueError(f"{name} must be between {minimum} and {maximum}")
 
 
 def _request_observation(

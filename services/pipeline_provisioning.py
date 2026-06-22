@@ -9,6 +9,7 @@ from pathlib import Path
 
 from services.approved_executor import ExecutorRegistry
 from services.can_observation_executor import register_can_observation
+from services.can_signal_summary_executor import register_can_signal_summary
 from services.execution_receipt_sink import make_execution_receipt_sink
 from services.host_telemetry_executor import register_host_telemetry
 from services.runtime_pipeline import RuntimePipeline
@@ -63,6 +64,10 @@ def provision_runtime_pipeline(*, capability_context, paths: PipelinePaths | Non
         replay_ledger_path=resolved.replay_ledger,
     )
     register_can_observation(
+        executor_registry=executor_registry,
+        safety_gate_registry=safety_gate_registry,
+    )
+    register_can_signal_summary(
         executor_registry=executor_registry,
         safety_gate_registry=safety_gate_registry,
     )
