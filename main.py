@@ -14,6 +14,7 @@ from services.continuity_activation import (
 )
 from services.optional_subsystems import activate_optional_subsystems
 from services.recovery_mode import enter_recovery_mode
+from services.runtime_status_executor import build_runtime_status_gateway
 from services.secure_boot_services import (
     ModuleLoadingError,
     PipelineProvisioningError,
@@ -83,6 +84,11 @@ def main():
         _run_recovery(f"module loading failed: {exc}", continuity)
         return
 
+    local_gateway = build_runtime_status_gateway(
+        pipeline=execution_pipeline,
+        identity_context=identity_context,
+    )
+
     optional_status = activate_optional_subsystems()
     logger.info(
         "[BOOT] Optional interface evaluated after secure boot: "
@@ -90,13 +96,13 @@ def main():
     )
 
     logger.info(
-        "[BOOT] Execution pipeline provisioned, modules loaded, "
-        "executor registry empty, safety default-deny."
+        "[BOOT] Execution pipeline provisioned with one read-only executor "
+        "and one local route; physical authority remains disabled."
     )
 
     logger.info("[BOOT] Entering idle loop.")
     while not _SHUTDOWN:
-        _ = execution_pipeline
+        _ = (execution_pipeline, local_gateway)
         time.sleep(1)
 
     logger.info("[BOOT] === Velvet Runtime Shutdown ===")
