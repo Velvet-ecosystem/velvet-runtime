@@ -1,0 +1,30 @@
+{
+  "schema": "velvet.executor.manifest.v1",
+  "name": "runtime-status",
+  "version": "1.0.0",
+  "capability": "runtime.observe",
+  "targets": [
+    "runtime"
+  ],
+  "safety_gate": "runtime-observation-gate",
+  "read_only": true,
+  "parameters": [
+    {
+      "name": "detail",
+      "type": "string",
+      "required": false,
+      "choices": [
+        "summary",
+        "full"
+      ]
+    },
+    {
+      "name": "limit",
+      "type": "integer",
+      "required": false,
+      "minimum": 1,
+      "maximum": 100,
+      "unit": "records"
+    }
+  ]
+}

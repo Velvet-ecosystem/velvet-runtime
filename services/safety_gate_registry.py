@@ -37,6 +37,13 @@ class SafetyGateRegistry:
             raise ValueError(f"safety gate {name!r} is already registered")
         self._gates[name] = SafetyGateSpec(name, capability, targets, spec.check)
 
+    def get(self, name: str) -> SafetyGateSpec:
+        normalized = _normalize(name)
+        try:
+            return self._gates[normalized]
+        except KeyError as exc:
+            raise KeyError(f"safety gate {normalized!r} is not registered") from exc
+
     def evaluate(
         self,
         token: CapabilityToken,
