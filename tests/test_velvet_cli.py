@@ -33,6 +33,23 @@ class TestVelvetCli(unittest.TestCase):
         self.assertTrue(document["ok"])
         self.assertFalse(document["output"]["actuation_performed"])
 
+    @patch("velvet_cli.request_host_telemetry")
+    def test_telemetry_success_uses_host_route_client(self, request_telemetry):
+        request_telemetry.return_value = LocalStatusResponse(
+            ok=True,
+            state="completed",
+            output={"uptime_seconds": 12.0, "actuation_performed": False},
+            errors=(),
+        )
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
+            code = velvet_cli.main(["telemetry", "--detail", "full"])
+
+        self.assertEqual(code, 0)
+        request_telemetry.assert_called_once_with(detail="full")
+        document = json.loads(stdout.getvalue())
+        self.assertFalse(document["output"]["actuation_performed"])
+
     @patch("velvet_cli.request_local_status")
     def test_status_denial_prints_stderr_and_returns_two(self, request_status):
         request_status.return_value = LocalStatusResponse(
@@ -59,7 +76,7 @@ class TestVelvetCli(unittest.TestCase):
 
         self.assertEqual(code, 1)
         document = json.loads(stderr.getvalue())
-        self.assertEqual(document["state"], "local_status_unavailable")
+        self.assertEqual(document["state"], "local_observation_unavailable")
 
 
 if __name__ == "__main__":
