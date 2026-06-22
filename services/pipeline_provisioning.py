@@ -9,6 +9,7 @@ from pathlib import Path
 
 from services.approved_executor import ExecutorRegistry
 from services.execution_receipt_sink import make_execution_receipt_sink
+from services.host_telemetry_executor import register_host_telemetry
 from services.runtime_pipeline import RuntimePipeline
 from services.runtime_status_executor import register_runtime_status
 from services.safety_gate_registry import SafetyGateRegistry
@@ -53,6 +54,12 @@ def provision_runtime_pipeline(*, capability_context, paths: PipelinePaths | Non
         capability_context=capability_context,
         executor_registry=executor_registry,
         safety_gate_registry=safety_gate_registry,
+    )
+    register_host_telemetry(
+        executor_registry=executor_registry,
+        safety_gate_registry=safety_gate_registry,
+        receipt_ledger_path=resolved.receipt_ledger,
+        replay_ledger_path=resolved.replay_ledger,
     )
 
     return RuntimePipeline(

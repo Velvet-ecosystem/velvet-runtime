@@ -8,7 +8,7 @@ import argparse
 import json
 import sys
 
-from services.local_status_client import request_local_status
+from services.local_status_client import request_host_telemetry, request_local_status
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -28,6 +28,17 @@ def build_parser() -> argparse.ArgumentParser:
         default="summary",
         help="status detail level",
     )
+
+    telemetry = subcommands.add_parser(
+        "telemetry",
+        help="request receipted read-only host telemetry",
+    )
+    telemetry.add_argument(
+        "--detail",
+        choices=("summary", "full"),
+        default="summary",
+        help="telemetry detail level",
+    )
     return parser
 
 
@@ -35,13 +46,17 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
     try:
-        response = request_local_status(detail=args.detail)
+        response = (
+            request_local_status(detail=args.detail)
+            if args.command == "status"
+            else request_host_telemetry(detail=args.detail)
+        )
     except Exception as exc:
         print(
             json.dumps(
                 {
                     "ok": False,
-                    "state": "local_status_unavailable",
+                    "state": "local_observation_unavailable",
                     "errors": [str(exc)],
                 },
                 sort_keys=True,
