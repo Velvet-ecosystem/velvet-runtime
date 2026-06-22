@@ -7,7 +7,7 @@ from typing import Any, Mapping
 
 from services.approved_executor import ExecutorRegistry, ExecutorSpec
 from services.executor_manifest import ExecutorManifest, load_executor_manifest, validate_parameters
-from services.local_intent_gateway import IntentRoute
+from services.local_intent_gateway import IntentRoute, LocalIntentGateway
 from services.safety_gate_registry import SafetyGateRegistry, SafetyGateSpec
 
 RUNTIME_STATUS_ROUTE = IntentRoute(
@@ -84,3 +84,13 @@ def register_runtime_status(
         handler=handler,
     ))
     return manifest
+
+
+def build_runtime_status_gateway(*, pipeline: Any, identity_context: Any) -> LocalIntentGateway:
+    """Build the local gateway with only the Runtime Status route published."""
+
+    return LocalIntentGateway(
+        pipeline=pipeline,
+        identity_context=identity_context,
+        routes=(RUNTIME_STATUS_ROUTE,),
+    )
