@@ -92,7 +92,6 @@ def collect_host_telemetry(
     output: dict[str, Any] = {
         "mode": "read-only",
         "observed_at": int(time.time()),
-        "pid": os.getpid(),
         "uptime_seconds": _uptime_seconds(),
         "load_average": _load_average(),
         "memory": memory,
@@ -101,14 +100,15 @@ def collect_host_telemetry(
             "used_bytes": disk.used,
             "free_bytes": disk.free,
         },
-        "receipt_ledger": _file_health(Path(receipt_ledger_path)),
-        "replay_ledger": _file_health(Path(replay_ledger_path)),
+        "receipt_ledger": _file_health(Path(receipt_ledger_path), include_details=False),
+        "replay_ledger": _file_health(Path(replay_ledger_path), include_details=False),
         "actuation_granted": False,
         "actuation_performed": False,
     }
 
     if detail == "full":
         output.update({
+            "pid": os.getpid(),
             "cpu_count": os.cpu_count(),
             "thermal_celsius": _thermal_readings(),
             "platform": {
@@ -116,6 +116,8 @@ def collect_host_telemetry(
                 "machine": os.uname().machine,
                 "release": os.uname().release,
             },
+            "receipt_ledger": _file_health(Path(receipt_ledger_path), include_details=True),
+            "replay_ledger": _file_health(Path(replay_ledger_path), include_details=True),
         })
 
     return output
@@ -163,16 +165,23 @@ def _thermal_readings() -> list[dict[str, Any]]:
     return readings
 
 
-def _file_health(path: Path) -> dict[str, Any]:
+def _file_health(path: Path, *, include_details: bool) -> dict[str, Any]:
     try:
         stat = path.stat()
+        is_file = path.is_file()
     except FileNotFoundError:
-        return {"exists": False, "is_file": False, "size_bytes": 0, "modified_at": None}
-    except OSError as exc:
-        return {"exists": None, "is_file": None, "size_bytes": None, "modified_at": None, "error": str(exc)}
-    return {
+        return {"status": "missing", "exists": False, "is_file": False}
+    except OSError:
+        return {"status": "unavailable", "exists": None, "is_file": None}
+
+    output: dict[str, Any] = {
+        "status": "ok" if is_file else "unexpected-type",
         "exists": True,
-        "is_file": path.is_file(),
-        "size_bytes": stat.st_size,
-        "modified_at": int(stat.st_mtime),
+        "is_file": is_file,
     }
+    if include_details:
+        output.update({
+            "size_bytes": stat.st_size,
+            "modified_at": int(stat.st_mtime),
+        })
+    return output
