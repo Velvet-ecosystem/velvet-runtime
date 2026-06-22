@@ -69,16 +69,19 @@ Run the full suite before submitting:
 python3 -m unittest discover -s tests -v
 ```
 
-All 128+ tests must pass. New tests must not suppress or work around
-existing enforcement assertions.
+The complete test suite must pass. New tests must not suppress, weaken,
+or work around existing enforcement assertions.
 
 ---
 
 ## Authority
 
 Mister — final authority on all architectural decisions.
-Velour — architecture review and continuity.
-Claude — integrator and executor.
+Velour — architecture review, doctrine, and continuity keeper.
+Ashmore — systems integrator, implementer, and reviewer.
+
+Hosted collaborators remain advisory and never receive Runtime, Court,
+safety-gate, executor, receipt-chain, or hardware authority.
 
 Contributions that conflict with doctrine are returned for revision,
 not merged with a note.
