@@ -10,6 +10,7 @@ from pathlib import Path
 from services.approved_executor import ExecutorRegistry
 from services.execution_receipt_sink import make_execution_receipt_sink
 from services.runtime_pipeline import RuntimePipeline
+from services.runtime_status_executor import register_runtime_status
 from services.safety_gate_registry import SafetyGateRegistry
 from services.token_replay_ledger import TokenReplayLedger
 
@@ -27,22 +28,10 @@ _DEFAULT_ROOT = Path("/opt/velvet/state")
 
 def resolve_pipeline_paths() -> PipelinePaths:
     return PipelinePaths(
-        court_policy=Path(os.environ.get(
-            "VELVET_COURT_POLICY_PATH",
-            str(_DEFAULT_ROOT / "policy" / "court_policy.json"),
-        )),
-        court_signing_key=Path(os.environ.get(
-            "VELVET_COURT_SIGNING_KEY_PATH",
-            str(_DEFAULT_ROOT / "court" / "signing_key.bin"),
-        )),
-        replay_ledger=Path(os.environ.get(
-            "VELVET_TOKEN_REPLAY_LEDGER_PATH",
-            str(_DEFAULT_ROOT / "execution" / "consumed_tokens.jsonl"),
-        )),
-        receipt_ledger=Path(os.environ.get(
-            "VELVET_EXECUTION_RECEIPTS_PATH",
-            str(_DEFAULT_ROOT / "receipts" / "execution.log"),
-        )),
+        court_policy=Path(os.environ.get("VELVET_COURT_POLICY_PATH", str(_DEFAULT_ROOT / "policy" / "court_policy.json"))),
+        court_signing_key=Path(os.environ.get("VELVET_COURT_SIGNING_KEY_PATH", str(_DEFAULT_ROOT / "court" / "signing_key.bin"))),
+        replay_ledger=Path(os.environ.get("VELVET_TOKEN_REPLAY_LEDGER_PATH", str(_DEFAULT_ROOT / "execution" / "consumed_tokens.jsonl"))),
+        receipt_ledger=Path(os.environ.get("VELVET_EXECUTION_RECEIPTS_PATH", str(_DEFAULT_ROOT / "receipts" / "execution.log"))),
     )
 
 
@@ -59,6 +48,12 @@ def provision_runtime_pipeline(*, capability_context, paths: PipelinePaths | Non
     receipt_sink = make_execution_receipt_sink(resolved.receipt_ledger)
     executor_registry = ExecutorRegistry()
     safety_gate_registry = SafetyGateRegistry()
+
+    register_runtime_status(
+        capability_context=capability_context,
+        executor_registry=executor_registry,
+        safety_gate_registry=safety_gate_registry,
+    )
 
     return RuntimePipeline(
         capability_context=capability_context,
