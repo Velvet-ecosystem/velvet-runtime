@@ -27,16 +27,34 @@ class LocalStatusResponse:
 
 
 def build_verified_status_gateway():
+    """Build local observation routes only after continuity passes."""
+
     paths = resolve_continuity_paths()
     identity_context = load_configured_identity_context(paths)
-    continuity = run_configured_continuity_gate(paths, identity_context=identity_context)
+    continuity = run_configured_continuity_gate(
+        paths,
+        identity_context=identity_context,
+    )
     if not continuity_boot_passed(continuity):
         raise RuntimeError("continuity denied local observation access")
-    pipeline = provision_runtime_pipeline(capability_context=identity_context.capability_context)
-    return build_observation_gateway(pipeline=pipeline, identity_context=identity_context)
+
+    pipeline = provision_runtime_pipeline(
+        capability_context=identity_context.capability_context,
+    )
+    return build_observation_gateway(
+        pipeline=pipeline,
+        identity_context=identity_context,
+    )
 
 
-def request_local_status(*, detail="summary", gateway=None, intent_id=None, now=None):
+def request_local_status(
+    *,
+    detail: str = "summary",
+    gateway=None,
+    intent_id: str | None = None,
+    now: int | None = None,
+) -> LocalStatusResponse:
+    _validate_detail(detail)
     return _request_observation(
         route_id="runtime-status",
         prefix="status",
@@ -47,7 +65,14 @@ def request_local_status(*, detail="summary", gateway=None, intent_id=None, now=
     )
 
 
-def request_host_telemetry(*, detail="summary", gateway=None, intent_id=None, now=None):
+def request_host_telemetry(
+    *,
+    detail: str = "summary",
+    gateway=None,
+    intent_id: str | None = None,
+    now: int | None = None,
+) -> LocalStatusResponse:
+    _validate_detail(detail)
     return _request_observation(
         route_id="host-telemetry",
         prefix="telemetry",
@@ -58,7 +83,13 @@ def request_host_telemetry(*, detail="summary", gateway=None, intent_id=None, no
     )
 
 
-def request_can_observation(*, max_frames=10, gateway=None, intent_id=None, now=None):
+def request_can_observation(
+    *,
+    max_frames: int = 10,
+    gateway=None,
+    intent_id: str | None = None,
+    now: int | None = None,
+) -> LocalStatusResponse:
     if isinstance(max_frames, bool) or not isinstance(max_frames, int):
         raise TypeError("max_frames must be an integer")
     if max_frames < 1 or max_frames > 100:
@@ -73,20 +104,40 @@ def request_can_observation(*, max_frames=10, gateway=None, intent_id=None, now=
     )
 
 
-def _request_observation(*, route_id, prefix, parameters, gateway, intent_id, now):
+def _validate_detail(detail: str) -> None:
+    if detail not in {"summary", "full"}:
+        raise ValueError("detail must be 'summary' or 'full'")
+
+
+def _request_observation(
+    *,
+    route_id: str,
+    prefix: str,
+    parameters: dict[str, Any],
+    gateway,
+    intent_id: str | None,
+    now: int | None,
+) -> LocalStatusResponse:
     active_gateway = gateway or build_verified_status_gateway()
     requested_at = int(now if now is not None else time.time())
     request_id = intent_id or f"{prefix}-{uuid.uuid4().hex}"
+
     result = active_gateway.submit(
-        {"intent_id": request_id, "route_id": route_id, "parameters": parameters},
+        {
+            "intent_id": request_id,
+            "route_id": route_id,
+            "parameters": parameters,
+        },
         now=requested_at,
     )
+
     if result.execution is not None:
         output = dict(result.execution.output or {})
         errors = tuple(result.execution.errors)
     else:
         output = None
         errors = tuple(result.court.errors)
+
     return LocalStatusResponse(
         ok=bool(result.authorized and result.executed),
         state=result.state,
