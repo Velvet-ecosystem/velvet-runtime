@@ -118,5 +118,7 @@ architecture. Removing or softening any one of them changes what Velvet is.
 ---
 
 *Mister — final authority*
-*Velour — architecture and continuity*
-*Claude — integrator and executor*
+*Velour — architecture, doctrine, and continuity keeper*
+*Ashmore — systems integrator, implementer, and reviewer*
+
+*Hosted collaborators remain advisory and hold no Runtime or hardware authority.*
