@@ -8,61 +8,39 @@ import argparse
 import json
 import sys
 
-from services.local_status_client import request_host_telemetry, request_local_status
+from services.local_status_client import (
+    request_can_observation,
+    request_host_telemetry,
+    request_local_status,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="velvet",
-        description="Local Velvet Runtime command line",
-    )
+    parser = argparse.ArgumentParser(prog="velvet", description="Local Velvet Runtime command line")
     subcommands = parser.add_subparsers(dest="command", required=True)
 
-    status = subcommands.add_parser(
-        "status",
-        help="request receipted read-only Runtime status",
-    )
-    status.add_argument(
-        "--detail",
-        choices=("summary", "full"),
-        default="summary",
-        help="status detail level",
-    )
+    status = subcommands.add_parser("status", help="request receipted read-only Runtime status")
+    status.add_argument("--detail", choices=("summary", "full"), default="summary")
 
-    telemetry = subcommands.add_parser(
-        "telemetry",
-        help="request receipted read-only host telemetry",
-    )
-    telemetry.add_argument(
-        "--detail",
-        choices=("summary", "full"),
-        default="summary",
-        help="telemetry detail level",
-    )
+    telemetry = subcommands.add_parser("telemetry", help="request receipted read-only host telemetry")
+    telemetry.add_argument("--detail", choices=("summary", "full"), default="summary")
+
+    can_observe = subcommands.add_parser("can-observe", help="request receipted receive-only CAN frames")
+    can_observe.add_argument("--max-frames", type=int, default=10)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-
     try:
-        response = (
-            request_local_status(detail=args.detail)
-            if args.command == "status"
-            else request_host_telemetry(detail=args.detail)
-        )
+        if args.command == "status":
+            response = request_local_status(detail=args.detail)
+        elif args.command == "telemetry":
+            response = request_host_telemetry(detail=args.detail)
+        else:
+            response = request_can_observation(max_frames=args.max_frames)
     except Exception as exc:
-        print(
-            json.dumps(
-                {
-                    "ok": False,
-                    "state": "local_observation_unavailable",
-                    "errors": [str(exc)],
-                },
-                sort_keys=True,
-            ),
-            file=sys.stderr,
-        )
+        print(json.dumps({"ok": False, "state": "local_observation_unavailable", "errors": [str(exc)]}, sort_keys=True), file=sys.stderr)
         return 1
 
     document = {

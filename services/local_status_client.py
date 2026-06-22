@@ -54,10 +54,11 @@ def request_local_status(
     intent_id: str | None = None,
     now: int | None = None,
 ) -> LocalStatusResponse:
+    _validate_detail(detail)
     return _request_observation(
         route_id="runtime-status",
         prefix="status",
-        detail=detail,
+        parameters={"detail": detail},
         gateway=gateway,
         intent_id=intent_id,
         now=now,
@@ -71,28 +72,52 @@ def request_host_telemetry(
     intent_id: str | None = None,
     now: int | None = None,
 ) -> LocalStatusResponse:
+    _validate_detail(detail)
     return _request_observation(
         route_id="host-telemetry",
         prefix="telemetry",
-        detail=detail,
+        parameters={"detail": detail},
         gateway=gateway,
         intent_id=intent_id,
         now=now,
     )
 
 
+def request_can_observation(
+    *,
+    max_frames: int = 10,
+    gateway=None,
+    intent_id: str | None = None,
+    now: int | None = None,
+) -> LocalStatusResponse:
+    if isinstance(max_frames, bool) or not isinstance(max_frames, int):
+        raise TypeError("max_frames must be an integer")
+    if max_frames < 1 or max_frames > 100:
+        raise ValueError("max_frames must be between 1 and 100")
+    return _request_observation(
+        route_id="can-observe",
+        prefix="can",
+        parameters={"max_frames": max_frames},
+        gateway=gateway,
+        intent_id=intent_id,
+        now=now,
+    )
+
+
+def _validate_detail(detail: str) -> None:
+    if detail not in {"summary", "full"}:
+        raise ValueError("detail must be 'summary' or 'full'")
+
+
 def _request_observation(
     *,
     route_id: str,
     prefix: str,
-    detail: str,
+    parameters: dict[str, Any],
     gateway,
     intent_id: str | None,
     now: int | None,
 ) -> LocalStatusResponse:
-    if detail not in {"summary", "full"}:
-        raise ValueError("detail must be 'summary' or 'full'")
-
     active_gateway = gateway or build_verified_status_gateway()
     requested_at = int(now if now is not None else time.time())
     request_id = intent_id or f"{prefix}-{uuid.uuid4().hex}"
@@ -101,7 +126,7 @@ def _request_observation(
         {
             "intent_id": request_id,
             "route_id": route_id,
-            "parameters": {"detail": detail},
+            "parameters": parameters,
         },
         now=requested_at,
     )
