@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-only
-"""Local, no-listener client for the read-only Runtime Status route."""
+"""Local, no-listener clients for read-only Runtime observation routes."""
 
 from __future__ import annotations
 
@@ -14,8 +14,8 @@ from services.continuity_activation import (
     resolve_continuity_paths,
     run_configured_continuity_gate,
 )
+from services.observation_gateway import build_observation_gateway
 from services.pipeline_provisioning import provision_runtime_pipeline
-from services.runtime_status_executor import build_runtime_status_gateway
 
 
 @dataclass(frozen=True)
@@ -27,7 +27,7 @@ class LocalStatusResponse:
 
 
 def build_verified_status_gateway():
-    """Build a local status gateway only after continuity passes."""
+    """Build local observation routes only after continuity passes."""
 
     paths = resolve_continuity_paths()
     identity_context = load_configured_identity_context(paths)
@@ -36,12 +36,12 @@ def build_verified_status_gateway():
         identity_context=identity_context,
     )
     if not continuity_boot_passed(continuity):
-        raise RuntimeError("continuity denied local status access")
+        raise RuntimeError("continuity denied local observation access")
 
     pipeline = provision_runtime_pipeline(
         capability_context=identity_context.capability_context,
     )
-    return build_runtime_status_gateway(
+    return build_observation_gateway(
         pipeline=pipeline,
         identity_context=identity_context,
     )
@@ -54,19 +54,53 @@ def request_local_status(
     intent_id: str | None = None,
     now: int | None = None,
 ) -> LocalStatusResponse:
-    """Submit one read-only status request through the normal Runtime path."""
+    return _request_observation(
+        route_id="runtime-status",
+        prefix="status",
+        detail=detail,
+        gateway=gateway,
+        intent_id=intent_id,
+        now=now,
+    )
 
+
+def request_host_telemetry(
+    *,
+    detail: str = "summary",
+    gateway=None,
+    intent_id: str | None = None,
+    now: int | None = None,
+) -> LocalStatusResponse:
+    return _request_observation(
+        route_id="host-telemetry",
+        prefix="telemetry",
+        detail=detail,
+        gateway=gateway,
+        intent_id=intent_id,
+        now=now,
+    )
+
+
+def _request_observation(
+    *,
+    route_id: str,
+    prefix: str,
+    detail: str,
+    gateway,
+    intent_id: str | None,
+    now: int | None,
+) -> LocalStatusResponse:
     if detail not in {"summary", "full"}:
         raise ValueError("detail must be 'summary' or 'full'")
 
     active_gateway = gateway or build_verified_status_gateway()
     requested_at = int(now if now is not None else time.time())
-    request_id = intent_id or f"status-{uuid.uuid4().hex}"
+    request_id = intent_id or f"{prefix}-{uuid.uuid4().hex}"
 
     result = active_gateway.submit(
         {
             "intent_id": request_id,
-            "route_id": "runtime-status",
+            "route_id": route_id,
             "parameters": {"detail": detail},
         },
         now=requested_at,
