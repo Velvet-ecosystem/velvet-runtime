@@ -29,6 +29,8 @@ VELVET_CAN_CHANNEL=can0
 
 The Linux CAN interface must be configured in kernel listen-only mode before use. Runtime does not configure bitrate or interface state and does not run shell commands.
 
+See [Founder Node CAN Listen-Only Deployment](founder_can_listen_only_deployment.md) for manual configuration, mandatory verification, persistent systemd ordering, rollback, and fail-closed deployment rules.
+
 Every successful response declares:
 
 ```text
