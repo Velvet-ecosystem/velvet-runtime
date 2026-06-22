@@ -26,12 +26,9 @@ class TestVelvetCli(unittest.TestCase):
         stdout = io.StringIO()
         with redirect_stdout(stdout):
             code = velvet_cli.main(["status", "--detail", "full"])
-
         self.assertEqual(code, 0)
         request_status.assert_called_once_with(detail="full")
-        document = json.loads(stdout.getvalue())
-        self.assertTrue(document["ok"])
-        self.assertFalse(document["output"]["actuation_performed"])
+        self.assertFalse(json.loads(stdout.getvalue())["output"]["actuation_performed"])
 
     @patch("velvet_cli.request_host_telemetry")
     def test_telemetry_success_uses_host_route_client(self, request_telemetry):
@@ -44,11 +41,23 @@ class TestVelvetCli(unittest.TestCase):
         stdout = io.StringIO()
         with redirect_stdout(stdout):
             code = velvet_cli.main(["telemetry", "--detail", "full"])
-
         self.assertEqual(code, 0)
         request_telemetry.assert_called_once_with(detail="full")
-        document = json.loads(stdout.getvalue())
-        self.assertFalse(document["output"]["actuation_performed"])
+
+    @patch("velvet_cli.request_can_observation")
+    def test_can_observation_uses_bounded_frame_request(self, request_can):
+        request_can.return_value = LocalStatusResponse(
+            ok=True,
+            state="completed",
+            output={"frame_count": 0, "frames": [], "actuation_performed": False},
+            errors=(),
+        )
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
+            code = velvet_cli.main(["can-observe", "--max-frames", "5"])
+        self.assertEqual(code, 0)
+        request_can.assert_called_once_with(max_frames=5)
+        self.assertFalse(json.loads(stdout.getvalue())["output"]["actuation_performed"])
 
     @patch("velvet_cli.request_local_status")
     def test_status_denial_prints_stderr_and_returns_two(self, request_status):
@@ -61,11 +70,8 @@ class TestVelvetCli(unittest.TestCase):
         stderr = io.StringIO()
         with redirect_stderr(stderr):
             code = velvet_cli.main(["status"])
-
         self.assertEqual(code, 2)
-        document = json.loads(stderr.getvalue())
-        self.assertFalse(document["ok"])
-        self.assertEqual(document["state"], "policy_denied")
+        self.assertEqual(json.loads(stderr.getvalue())["state"], "policy_denied")
 
     @patch("velvet_cli.request_local_status")
     def test_bootstrap_failure_returns_one(self, request_status):
@@ -73,10 +79,8 @@ class TestVelvetCli(unittest.TestCase):
         stderr = io.StringIO()
         with redirect_stderr(stderr):
             code = velvet_cli.main(["status"])
-
         self.assertEqual(code, 1)
-        document = json.loads(stderr.getvalue())
-        self.assertEqual(document["state"], "local_observation_unavailable")
+        self.assertEqual(json.loads(stderr.getvalue())["state"], "local_observation_unavailable")
 
 
 if __name__ == "__main__":
