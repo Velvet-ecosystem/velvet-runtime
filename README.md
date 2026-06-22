@@ -1,18 +1,18 @@
 # velvet-runtime
 
-The local bootstrap, identity, authorization, and execution-wiring layer for the Velvet AI ecosystem.
+The local bootstrap, identity, authorization, safety, and execution-wiring layer for the Velvet AI ecosystem.
 
-Velvet Runtime is designed for the Founder UP Squared and other Linux surfaces, but its contracts are intentionally portable across vehicle, home, forge, industrial, mobile, and subordinate-node deployments.
+Velvet Runtime is designed for the Founder UP Squared and other Linux surfaces, with contracts portable across vehicle, home, forge, industrial, mobile, and subordinate-node deployments.
 
 > Runtime wires. Policy authorizes. Gates enforce. Executors act. Receipts remember.
 
 ## Current Status
 
-The secure request spine is implemented from boot identity through a narrow local intent gateway.
+The secure request spine is implemented from boot identity through one harmless read-only executor.
 
 Current physical authority: **none**.
 
-The Runtime presently has:
+Runtime presently includes:
 
 - continuity and surface verification
 - active body-registry binding
@@ -20,27 +20,28 @@ The Runtime presently has:
 - physical-presence and owner-verification context
 - bounded capability-context proposals
 - Court authorization with short-lived signed tokens
+- named safety-gate registration
+- executor manifests and parameter schemas
 - approved-executor registration and verification
-- persistent consumed-token replay protection
-- execution receipts
-- default-deny pipeline provisioning during boot
-- a route-bound local intent gateway
+- cross-process persistent replay protection
+- canonical Court, safety, and execution receipts
+- a narrow local intent gateway
+- one trusted read-only route: `runtime-status`
+- one read-only executor: `runtime-status`
 
-The Runtime does **not** presently expose:
+Runtime does **not** expose:
 
+- a public network listener
+- write-capable routes
 - real hardware executors
 - CAN actuation
 - relay control
 - lock, lighting, climate, or seat actuation
 - steering, throttle, braking, or drive authority
-- a public network listener
-- trusted routes enabled at boot
 
-The courthouse exists. The machinery remains locked outside.
+The courthouse can now inspect itself. The machinery remains locked outside.
 
 ## Core Execution Law
-
-Every meaningful action must follow this chain:
 
 ```text
 input
@@ -51,13 +52,11 @@ input
   -> signed capability token
   -> approved executor lookup
   -> replay check
-  -> safety check
+  -> named safety gate
   -> execution-start receipt
   -> named handler
   -> final receipt
 ```
-
-The governing rules are:
 
 ```text
 no valid receipt = deny actuation
@@ -75,50 +74,27 @@ base runtime wiring
   -> continuity verification
   -> continuity receipt
   -> Court pipeline provisioning
-  -> empty executor registry
-  -> default-deny safety gate
+  -> runtime-status executor registration
+  -> read-only status safety gate registration
   -> module loading
+  -> local runtime-status route construction
+  -> optional interface lifecycle
   -> idle runtime
 ```
 
-The same configured identity context is reused by continuity verification and pipeline provisioning. Runtime does not verify one identity and then silently execute under another.
+The same configured identity context is reused by continuity verification, Court provisioning, and the read-only status executor.
 
-A failure in identity loading, continuity, Court policy, signing-key loading, replay-ledger loading, or pipeline provisioning enters recovery before modules load.
+Identity loading, continuity, Court policy, signing-key loading, replay-ledger loading, receipt-family loading, or pipeline provisioning failures enter recovery before normal operation.
 
 ## Identity and Authority Boundaries
 
-Velvet keeps these concepts separate:
+Velvet keeps system, surface, body, profile, session, physical presence, address preference, authority profile, capability proposal, and authorization separate.
 
-- system identity
-- surface identity
-- body identity
-- profile identity
-- session identity
-- physical presence
-- address preference
-- authority profile
-- capability proposal
-- authorization
-
-A name is not permission.
-
-The expected path is:
-
-```text
-name recognized
-  -> profile lookup
-  -> authority check
-  -> policy check
-  -> capability token
-  -> safety gate
-  -> receipt
-```
-
-Unknown or unverified owner claims fall back to the active guest profile.
+A name is not permission. A route is not permission. A receipt is evidence, not permission.
 
 ## Continuity
 
-Continuity verifies lineage, active surface, and body binding. It may return bounded authority evidence for boot, but it does not actuate hardware and does not independently grant policy authority.
+Continuity verifies lineage, active surface, and body binding. It does not actuate hardware and does not independently grant policy authority.
 
 See:
 
@@ -129,38 +105,64 @@ See:
 
 ## Court Authorization
 
-The Court accepts only strict normalized intents bound to the verified profile, session, body, surface, capability, and target.
+Court accepts strict normalized intents bound to verified profile, session, body, surface, capability, and target. Approved requests receive short-lived signed capability tokens. Court never invokes executors directly.
 
-An approved request receives a short-lived HMAC-signed capability token. A denied request receives no token.
+See [Court Authorization Contract](docs/court_authorization_contract.md).
 
-Court authorization never invokes an executor directly.
+## Safety Gates
 
-See:
+Safety gates are named and bound to explicit capabilities and targets.
 
-- [Court Authorization Contract](docs/court_authorization_contract.md)
+```text
+no matching gate = deny
+multiple matching gates = deny
+gate denial = deny
+gate error = deny
+```
 
-## Approved Executors
+Only the read-only `runtime-status-read-only-gate` is currently registered.
 
-Only explicitly registered executors may run. The approved-executor layer verifies:
+See [Safety Gate Registry](docs/safety_gate_registry.md).
 
-- token signature and expiry
-- executor registration
-- capability match
-- target match
-- replay status
-- safety approval
-- persisted execution-start receipt
+## Approved Executors and Manifests
 
-No arbitrary Python import path, shell command, user-supplied callable, or client-selected executor is considered authority.
+Only explicitly registered executors may run. Each future executor declares its name, version, capability, targets, named safety gate, read-only status, and parameter schema.
+
+The execution layer verifies token signature and expiry, executor binding, replay status, safety approval, and persistence of the execution-start receipt.
+
+No arbitrary import path, shell command, client-supplied callable, or client-selected executor is authority.
 
 See:
 
 - [Approved Executor Contract](docs/approved_executor_contract.md)
+- [Executor Manifest Contract](docs/executor_manifest_contract.md)
 - [Runtime Execution Pipeline](docs/runtime_execution_pipeline.md)
 
-## Persistent Replay Protection
+## Runtime Status
 
-Consumed token identifiers are stored in an append-only JSONL ledger and reloaded after restart. A reboot does not revive a used token.
+`runtime-status` proves the complete Court-to-receipt path without touching hardware.
+
+Request shape:
+
+```json
+{
+  "intent_id": "status-1",
+  "route_id": "runtime-status",
+  "parameters": {
+    "detail": "summary"
+  }
+}
+```
+
+The optional `detail` value is `summary` or `full`.
+
+Every successful result remains read-only and reports both `actuation_granted: false` and `actuation_performed: false`.
+
+See [Runtime Status Executor](docs/runtime_status_executor.md).
+
+## Replay Protection
+
+Consumed token identifiers are stored in an append-only JSONL ledger, locked across local processes, and reloaded after restart. A reboot does not revive a used token. Malformed history fails closed.
 
 Default path:
 
@@ -168,24 +170,20 @@ Default path:
 /opt/velvet/state/execution/consumed_tokens.jsonl
 ```
 
-Malformed replay history fails closed.
-
-See:
-
-- [Persistent Replay Ledger](docs/persistent_replay_ledger.md)
+See [Persistent Replay Ledger](docs/persistent_replay_ledger.md).
 
 ## Pipeline Provisioning
 
-Runtime startup assembles:
+Startup assembles:
 
 - Court policy
 - local Court signing key
 - persistent replay ledger
-- execution receipt sink
-- empty executor registry
-- default-deny safety gate
+- canonical execution receipt sink
+- executor registry containing only `runtime-status`
+- safety registry containing only its read-only gate
 
-The Court signing key must already exist locally and contain at least 32 bytes. Runtime does not generate, print, or commit it.
+The signing key must already exist locally and contain at least 32 bytes. Runtime does not generate, print, or commit it.
 
 Default paths:
 
@@ -199,13 +197,12 @@ Default paths:
 See:
 
 - [Runtime Pipeline Provisioning](docs/runtime_pipeline_provisioning.md)
+- [Canonical Receipt Sink Integration](docs/canonical_receipt_sink_integration.md)
 - [Boot Pipeline Integration](docs/boot_pipeline_integration.md)
 
 ## Local Intent Gateway
 
-The local gateway is the client-facing request seam for the Runtime pipeline.
-
-Clients may provide only:
+Clients may supply only:
 
 ```text
 intent_id
@@ -213,22 +210,11 @@ route_id
 route-approved parameters
 ```
 
-The gateway supplies verified profile, session, body, and surface identity internally. Clients cannot provide:
+Runtime supplies verified identity and trusted route bindings internally. Clients cannot supply executor names, raw capabilities, targets, module paths, shell commands, Python callables, or hardware handles.
 
-- executor names
-- raw capabilities or targets
-- module paths
-- shell commands
-- Python callables
-- hardware handles
+One in-process read-only route is now present. No network listener is enabled.
 
-Unknown routes, extra request fields, non-normalized identifiers, and parameters outside a route allowlist are rejected before Court authorization.
-
-No listener or trusted routes are enabled yet.
-
-See:
-
-- [Local Intent Gateway](docs/local_intent_gateway.md)
+See [Local Intent Gateway](docs/local_intent_gateway.md).
 
 ## Runtime State Paths
 
@@ -248,7 +234,7 @@ See:
 /opt/velvet/state/recovery/continuity_status.json
 ```
 
-Founder identity material and proof material must be provisioned physically and locally on the Founder node. They must never be generated in chat, CI, or a cloud build environment.
+Founder identity and proof material must be provisioned physically and locally on the Founder node. They must never be generated in chat, CI, or a cloud build environment.
 
 ## Repository Structure
 
@@ -260,79 +246,53 @@ velvet-runtime/
 ├── services/
 │   ├── continuity_activation.py
 │   ├── body_registry.py
-│   ├── body_binding.py
 │   ├── profile_binding.py
 │   ├── capability_context.py
-│   ├── court_intent.py
-│   ├── court_token.py
 │   ├── court_authorization.py
+│   ├── safety_gate_registry.py
+│   ├── executor_manifest.py
 │   ├── approved_executor.py
 │   ├── token_replay_ledger.py
 │   ├── runtime_pipeline.py
 │   ├── pipeline_provisioning.py
-│   ├── secure_boot_services.py
 │   ├── local_intent_gateway.py
+│   ├── runtime_status_executor.py
 │   └── module_loader.py
-├── modules/
-├── receipts/
-├── velvet_logging/
-├── systemd/
 ├── docs/
 └── tests/
 ```
 
 ## Module Boundary
 
-Modules are trusted local plugins reviewed before deployment. They receive only the hardened publishing interface approved by the module loader.
+Modules are trusted local plugins reviewed before deployment. They receive only the hardened publishing interface approved by the module loader. They do not receive the Court pipeline, executor registry, safety registry, or hardware handles.
 
-A module must expose the signature expected by `ModuleLoader`. It must not request direct access to the event bus, enforcer, runtime internals, Court pipeline, executor registry, or hardware handles.
+The current Python boundary provides interface hygiene, not a malicious-code sandbox. Untrusted plugins require process isolation and IPC.
 
-The current Python process boundary provides interface hygiene, not a malicious-code sandbox. Untrusted modules require process isolation and IPC in a future phase.
-
-## Running Tests
+## Tests
 
 ```bash
 python3 -m unittest discover -s tests -v
 ```
 
-Runtime CI currently tests Python 3.10, 3.11, and 3.12.
-
-## Deployment Note
-
-Running `main.py` requires locally provisioned continuity, body, profile, session, capability, Court-policy, and signing-key state. A development machine without those files should use the unit suite rather than expecting normal boot.
+Runtime CI tests Python 3.10, 3.11, and 3.12.
 
 ## Cleanup Rhythm
 
-Velvet uses periodic boundary-cleanup passes rather than postponing all maintenance until the end.
-
-Recommended rhythm:
-
-```text
-3 to 5 feature PRs
-  -> cleanup and hardening audit
-  -> continue development
-```
-
-Before introducing a new authority boundary or real hardware executor, the previous layer should be reviewed for stale code, duplicate configuration, weak typing, race conditions, misleading documentation, and missing failure-mode tests.
+After roughly three to five feature PRs, or before introducing a new authority boundary, pause for cleanup and hardening.
 
 ## Next Milestones
 
-1. Runtime boundary cleanup and hardening
-2. Cross-process atomic replay consumption
-3. Public executor-registry inspection methods
-4. Typed service protocols
-5. Distinct pipeline and module-loading failure classes
-6. Delayed optional interface activation until after continuity
-7. Safety-gate registry
-8. Executor manifest and parameter schemas
-9. First read-only executor
-10. First low-risk physical executor only after another security review
+1. A local CLI adapter for the read-only status route
+2. Read-only telemetry integration
+3. Vehicle-CAN observation adapter with no transmit path
+4. Another cleanup and security review
+5. First low-risk physical executor only after explicit local deployment review
 
 ## Security Posture
 
 Velvet Runtime is offline-first, local-API-first, CLI-accessible, and cloud-optional.
 
-The offline language model remains behind the local API as a reasoning engine. It must never directly control shell access, files, relays, CAN, actuators, or hardware.
+The offline language model remains behind the local request boundary as a reasoning engine. It must never directly control shell access, files, relays, CAN, actuators, or hardware.
 
 The brain proposes. The Court authorizes. Executors act. Receipts remember.
 
