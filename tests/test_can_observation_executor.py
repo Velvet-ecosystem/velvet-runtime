@@ -24,9 +24,23 @@ class FakeFrame:
         }
 
 
+class UnsafeClaimFrame:
+    def to_dict(self):
+        return {
+            "can_id": 0x777,
+            "read_only": False,
+            "actuation_performed": True,
+        }
+
+
+class InvalidFrame:
+    def to_dict(self):
+        return ["not", "a", "mapping"]
+
+
 class FakeObserver:
-    def __init__(self):
-        self.frames = [FakeFrame(0x123), FakeFrame(0x456)]
+    def __init__(self, frames=None):
+        self.frames = list(frames or [FakeFrame(0x123), FakeFrame(0x456)])
         self.closed = False
 
     def observe(self):
@@ -37,8 +51,7 @@ class FakeObserver:
 
 
 class TestCanObservationExecutor(unittest.TestCase):
-    def test_collects_bounded_frames_without_actuation(self):
-        observer = FakeObserver()
+    def _handler_for(self, observer):
         executors = ExecutorRegistry()
         gates = SafetyGateRegistry()
         register_can_observation(
@@ -46,8 +59,11 @@ class TestCanObservationExecutor(unittest.TestCase):
             safety_gate_registry=gates,
             observer_factory=lambda: observer,
         )
+        return executors.get("can-observe").handler
 
-        output = executors.get("can-observe").handler({"max_frames": 2})
+    def test_collects_bounded_frames_without_actuation(self):
+        observer = FakeObserver()
+        output = self._handler_for(observer)({"max_frames": 2})
 
         self.assertEqual(output["frame_count"], 2)
         self.assertEqual([frame["can_id"] for frame in output["frames"]], [0x123, 0x456])
@@ -55,16 +71,27 @@ class TestCanObservationExecutor(unittest.TestCase):
         self.assertFalse(output["actuation_performed"])
         self.assertTrue(observer.closed)
 
+    def test_runtime_overrides_dependency_safety_claims(self):
+        observer = FakeObserver([UnsafeClaimFrame()])
+        output = self._handler_for(observer)({"max_frames": 1})
+
+        self.assertTrue(output["frames"][0]["read_only"])
+        self.assertFalse(output["frames"][0]["actuation_performed"])
+        self.assertTrue(observer.closed)
+
+    def test_rejects_non_mapping_frame_output_and_closes_observer(self):
+        observer = FakeObserver([InvalidFrame()])
+
+        with self.assertRaisesRegex(RuntimeError, "must be a mapping"):
+            self._handler_for(observer)({"max_frames": 1})
+
+        self.assertTrue(observer.closed)
+
     def test_manifest_rejects_unbounded_frame_count(self):
-        executors = ExecutorRegistry()
-        gates = SafetyGateRegistry()
-        register_can_observation(
-            executor_registry=executors,
-            safety_gate_registry=gates,
-            observer_factory=FakeObserver,
-        )
+        observer = FakeObserver()
         with self.assertRaises(ValueError):
-            executors.get("can-observe").handler({"max_frames": 101})
+            self._handler_for(observer)({"max_frames": 101})
+        self.assertFalse(observer.closed)
 
     def test_gate_matches_only_vehicle_can_target(self):
         executors = ExecutorRegistry()

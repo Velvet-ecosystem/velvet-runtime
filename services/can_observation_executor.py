@@ -67,7 +67,7 @@ def register_can_observation(
                 frame = observer.observe()
                 if frame is None:
                     break
-                frames.append(frame.to_dict())
+                frames.append(_bounded_frame_output(frame))
         finally:
             shutdown = getattr(observer, "shutdown", None)
             if callable(shutdown):
@@ -88,6 +88,29 @@ def register_can_observation(
         handler=handler,
     ))
     return manifest
+
+
+def _bounded_frame_output(frame: Any) -> dict[str, Any]:
+    """Return a copied mapping with Runtime-owned safety declarations.
+
+    The vehicle-CAN package is a trusted dependency, but Runtime must not
+    publish arbitrary objects or accept dependency-supplied claims about
+    actuation state. Frame output therefore has to be a mapping, is copied
+    before publication, and receives Runtime-owned read-only markers.
+    """
+
+    to_dict = getattr(frame, "to_dict", None)
+    if not callable(to_dict):
+        raise RuntimeError("observed CAN frame does not provide to_dict()")
+
+    raw = to_dict()
+    if not isinstance(raw, Mapping):
+        raise RuntimeError("observed CAN frame output must be a mapping")
+
+    output = dict(raw)
+    output["read_only"] = True
+    output["actuation_performed"] = False
+    return output
 
 
 def _default_observer_factory():
