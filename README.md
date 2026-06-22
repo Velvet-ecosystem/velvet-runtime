@@ -8,38 +8,36 @@ Velvet Runtime is designed for the Founder UP Squared and other Linux surfaces, 
 
 ## Current Status
 
-The secure request spine is implemented from boot identity through one harmless read-only executor.
+The secure request spine is implemented from boot identity through three read-only observation executors.
 
 Current physical authority: **none**.
 
-Runtime presently includes:
+Runtime currently provides:
 
 - continuity and surface verification
 - active body-registry binding
 - profile and session binding
-- physical-presence and owner-verification context
 - bounded capability-context proposals
 - Court authorization with short-lived signed tokens
 - named safety-gate registration
-- executor manifests and parameter schemas
-- approved-executor registration and verification
+- manifest-bound approved executors
 - cross-process persistent replay protection
 - canonical Court, safety, and execution receipts
 - a narrow local intent gateway
-- one trusted read-only route: `runtime-status`
-- one read-only executor: `runtime-status`
+- three read-only routes and executors:
+  - `runtime-status`
+  - `host-telemetry`
+  - `can-observe`
 
 Runtime does **not** expose:
 
 - a public network listener
 - write-capable routes
-- real hardware executors
-- CAN actuation
+- CAN transmission
 - relay control
-- lock, lighting, climate, or seat actuation
-- steering, throttle, braking, or drive authority
+- lock, lighting, climate, seat, steering, throttle, braking, or drive authority
 
-The courthouse can now inspect itself. The machinery remains locked outside.
+The courthouse can inspect itself, its host, and the vehicle bus. The machinery remains locked outside.
 
 ## Core Execution Law
 
@@ -74,15 +72,14 @@ base runtime wiring
   -> continuity verification
   -> continuity receipt
   -> Court pipeline provisioning
-  -> runtime-status executor registration
-  -> read-only status safety gate registration
+  -> read-only executor and gate registration
   -> module loading
-  -> local runtime-status route construction
+  -> local observation route construction
   -> optional interface lifecycle
   -> idle runtime
 ```
 
-The same configured identity context is reused by continuity verification, Court provisioning, and the read-only status executor.
+The same configured identity context is reused by continuity verification, Court provisioning, and all read-only observers.
 
 Identity loading, continuity, Court policy, signing-key loading, replay-ledger loading, receipt-family loading, or pipeline provisioning failures enter recovery before normal operation.
 
@@ -120,13 +117,17 @@ gate denial = deny
 gate error = deny
 ```
 
-Only the read-only `runtime-status-read-only-gate` is currently registered.
+Currently registered read-only gates:
+
+- `runtime-status-read-only-gate`
+- `host-telemetry-read-only-gate`
+- `can-observe-read-only-gate`
 
 See [Safety Gate Registry](docs/safety_gate_registry.md).
 
 ## Approved Executors and Manifests
 
-Only explicitly registered executors may run. Each future executor declares its name, version, capability, targets, named safety gate, read-only status, and parameter schema.
+Only explicitly registered executors may run. Each executor declares its name, version, capability, targets, named safety gate, read-only status, and parameter schema.
 
 The execution layer verifies token signature and expiry, executor binding, replay status, safety approval, and persistence of the execution-start receipt.
 
@@ -138,27 +139,49 @@ See:
 - [Executor Manifest Contract](docs/executor_manifest_contract.md)
 - [Runtime Execution Pipeline](docs/runtime_execution_pipeline.md)
 
-## Runtime Status
+## Read-Only Observation Routes
 
-`runtime-status` proves the complete Court-to-receipt path without touching hardware.
+### Runtime Status
 
-Request shape:
-
-```json
-{
-  "intent_id": "status-1",
-  "route_id": "runtime-status",
-  "parameters": {
-    "detail": "summary"
-  }
-}
+```bash
+python3 velvet_cli.py status
+python3 velvet_cli.py status --detail full
 ```
 
-The optional `detail` value is `summary` or `full`.
-
-Every successful result remains read-only and reports both `actuation_granted: false` and `actuation_performed: false`.
+Reports bounded Runtime identity and security posture.
 
 See [Runtime Status Executor](docs/runtime_status_executor.md).
+
+### Host Telemetry
+
+```bash
+python3 velvet_cli.py telemetry
+python3 velvet_cli.py telemetry --detail full
+```
+
+Reports bounded uptime, load, memory, disk, thermal data when available, and receipt/replay ledger file health.
+
+See [Host Telemetry Executor](docs/host_telemetry_executor.md).
+
+### CAN Observation
+
+```bash
+python3 velvet_cli.py can-observe --max-frames 10
+```
+
+Receives 1 to 100 bounded classic-CAN frames through the receive-only interfaces from `velvet-vehicle-can`.
+
+The Linux CAN interface must be configured in kernel listen-only mode. Runtime does not configure bitrate or link state and does not run shell commands.
+
+See [Runtime CAN Observation Executor](docs/can_observation_executor.md).
+
+Every successful observation result declares:
+
+```text
+mode: read-only
+actuation_granted: false
+actuation_performed: false
+```
 
 ## Replay Protection
 
@@ -180,8 +203,8 @@ Startup assembles:
 - local Court signing key
 - persistent replay ledger
 - canonical execution receipt sink
-- executor registry containing only `runtime-status`
-- safety registry containing only its read-only gate
+- executor registry containing three read-only observers
+- safety registry containing their three read-only gates
 
 The signing key must already exist locally and contain at least 32 bytes. Runtime does not generate, print, or commit it.
 
@@ -212,7 +235,7 @@ route-approved parameters
 
 Runtime supplies verified identity and trusted route bindings internally. Clients cannot supply executor names, raw capabilities, targets, module paths, shell commands, Python callables, or hardware handles.
 
-One in-process read-only route is now present. No network listener is enabled.
+Three in-process read-only routes are present. No network listener is enabled.
 
 See [Local Intent Gateway](docs/local_intent_gateway.md).
 
@@ -241,13 +264,11 @@ Founder identity and proof material must be provisioned physically and locally o
 ```text
 velvet-runtime/
 ├── main.py
+├── velvet_cli.py
 ├── runtime_wiring.py
 ├── config/
 ├── services/
 │   ├── continuity_activation.py
-│   ├── body_registry.py
-│   ├── profile_binding.py
-│   ├── capability_context.py
 │   ├── court_authorization.py
 │   ├── safety_gate_registry.py
 │   ├── executor_manifest.py
@@ -256,7 +277,10 @@ velvet-runtime/
 │   ├── runtime_pipeline.py
 │   ├── pipeline_provisioning.py
 │   ├── local_intent_gateway.py
+│   ├── observation_gateway.py
 │   ├── runtime_status_executor.py
+│   ├── host_telemetry_executor.py
+│   ├── can_observation_executor.py
 │   └── module_loader.py
 ├── docs/
 └── tests/
@@ -282,10 +306,10 @@ After roughly three to five feature PRs, or before introducing a new authority b
 
 ## Next Milestones
 
-1. A local CLI adapter for the read-only status route
-2. Read-only telemetry integration
-3. Vehicle-CAN observation adapter with no transmit path
-4. Another cleanup and security review
+1. Cleanup and security review of the three observation executors
+2. Deployment recipe for kernel listen-only CAN on the Founder node
+3. Read-only decoded signal summaries built from observed frames
+4. Interface scenes for the same bounded observation routes
 5. First low-risk physical executor only after explicit local deployment review
 
 ## Security Posture
