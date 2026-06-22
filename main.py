@@ -12,9 +12,9 @@ from services.continuity_activation import (
     resolve_continuity_paths,
     run_configured_continuity_gate,
 )
+from services.observation_gateway import build_observation_gateway
 from services.optional_subsystems import activate_optional_subsystems
 from services.recovery_mode import enter_recovery_mode
-from services.runtime_status_executor import build_runtime_status_gateway
 from services.secure_boot_services import (
     ModuleLoadingError,
     PipelineProvisioningError,
@@ -84,7 +84,7 @@ def main():
         _run_recovery(f"module loading failed: {exc}", continuity)
         return
 
-    local_gateway = build_runtime_status_gateway(
+    local_gateway = build_observation_gateway(
         pipeline=execution_pipeline,
         identity_context=identity_context,
     )
@@ -96,8 +96,8 @@ def main():
     )
 
     logger.info(
-        "[BOOT] Execution pipeline provisioned with one read-only executor "
-        "and one local route; physical authority remains disabled."
+        "[BOOT] Execution pipeline provisioned with two read-only executors "
+        "and two local routes; physical authority remains disabled."
     )
 
     logger.info("[BOOT] Entering idle loop.")
