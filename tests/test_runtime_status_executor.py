@@ -37,6 +37,17 @@ class TestRuntimeStatusExecutor(unittest.TestCase):
         body = SimpleNamespace(body_id="tiburon_v0", surface="drive")
         return SimpleNamespace(body=body, session=session, capability_context=capability_context)
 
+    def registered_handler(self):
+        context = self.capability_context()
+        executors = ExecutorRegistry()
+        gates = SafetyGateRegistry()
+        register_runtime_status(
+            capability_context=context,
+            executor_registry=executors,
+            safety_gate_registry=gates,
+        )
+        return context, executors, gates, executors.get("runtime-status").handler
+
     def test_status_route_completes_without_actuation(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -52,14 +63,7 @@ class TestRuntimeStatusExecutor(unittest.TestCase):
                 }],
             }), encoding="utf-8")
 
-            context = self.capability_context()
-            executors = ExecutorRegistry()
-            gates = SafetyGateRegistry()
-            register_runtime_status(
-                capability_context=context,
-                executor_registry=executors,
-                safety_gate_registry=gates,
-            )
+            context, executors, gates, _ = self.registered_handler()
             receipts = []
             pipeline = RuntimePipeline(
                 capability_context=context,
@@ -81,27 +85,42 @@ class TestRuntimeStatusExecutor(unittest.TestCase):
                 "parameters": {"detail": "full"},
             }, now=100)
 
+            output = result.execution.output
             self.assertTrue(result.authorized)
             self.assertTrue(result.executed)
             self.assertEqual(result.state, "completed")
-            self.assertFalse(result.execution.output["actuation_performed"])
-            self.assertFalse(result.execution.output["actuation_granted"])
-            self.assertEqual(result.execution.output["registered_executors"], ["runtime-status"])
+            self.assertFalse(output["actuation_performed"])
+            self.assertFalse(output["actuation_granted"])
+            self.assertEqual(output["registered_executor_count"], 1)
+            self.assertEqual(output["registered_safety_gate_count"], 1)
+            self.assertNotIn("registered_executors", output)
+            self.assertNotIn("registered_safety_gates", output)
+            self.assertNotIn("session_id", output)
+            self.assertNotIn("policy_id", output)
+            self.assertNotIn("profile_id", output)
+            self.assertNotIn("body_id", output)
+            self.assertNotIn("proposed_capabilities", output)
             self.assertEqual(
                 [item["event_type"] for item in receipts],
                 ["COURT_AUTHORIZED", "EXECUTION_STARTED", "EXECUTION_COMPLETED"],
             )
 
+    def test_summary_reports_posture_without_identity_details(self):
+        _, _, _, handler = self.registered_handler()
+        output = handler({"detail": "summary"})
+
+        self.assertEqual(output["status"], "ready")
+        self.assertEqual(output["surface"], "drive")
+        self.assertTrue(output["authorization_required"])
+        self.assertFalse(output["actuation_granted"])
+        self.assertNotIn("authority_profile", output)
+        self.assertNotIn("session_id", output)
+        self.assertNotIn("policy_id", output)
+        self.assertNotIn("profile_id", output)
+        self.assertNotIn("body_id", output)
+
     def test_invalid_status_parameter_fails_before_handler_output(self):
-        context = self.capability_context()
-        executors = ExecutorRegistry()
-        gates = SafetyGateRegistry()
-        register_runtime_status(
-            capability_context=context,
-            executor_registry=executors,
-            safety_gate_registry=gates,
-        )
-        handler = executors.get("runtime-status").handler
+        _, _, _, handler = self.registered_handler()
         with self.assertRaises(ValueError):
             handler({"detail": "secret"})
 

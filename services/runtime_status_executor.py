@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-only
-"""First harmless Runtime executor: read-only status observation."""
+"""Read-only Runtime security-posture observation."""
 
 from __future__ import annotations
 
@@ -59,21 +59,17 @@ def register_runtime_status(
         output = {
             "status": "ready",
             "mode": "read-only",
-            "policy_id": capability_context.policy_id,
-            "profile_id": capability_context.profile_id,
-            "authority_profile": capability_context.authority_profile,
-            "body_id": capability_context.body_id,
             "surface": capability_context.surface,
-            "authorization_required": capability_context.authorization_required,
-            "actuation_granted": capability_context.actuation_granted,
+            "authorization_required": bool(capability_context.authorization_required),
+            "actuation_granted": False,
             "actuation_performed": False,
         }
         if detail == "full":
             output.update({
-                "session_id": capability_context.session_id,
-                "proposed_capabilities": list(capability_context.proposed_capabilities),
-                "registered_executors": list(executor_registry.names()),
-                "registered_safety_gates": list(safety_gate_registry.names()),
+                "authority_profile": capability_context.authority_profile,
+                "proposed_capability_count": len(tuple(capability_context.proposed_capabilities)),
+                "registered_executor_count": len(executor_registry.names()),
+                "registered_safety_gate_count": len(safety_gate_registry.names()),
             })
         return output
 
