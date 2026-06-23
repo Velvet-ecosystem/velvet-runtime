@@ -10,6 +10,24 @@ permissions:
   contents: read
 
 jobs:
+  baseline-contract:
+    name: Python 3.8 baseline contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.8"
+
+      - name: Validate UP2 dependency contract
+        run: python scripts/validate_up2_manifest.py
+
+      - name: Run UP2 dependency contract tests
+        run: python -m unittest tests.test_up2_dependency_manifest -v
+
   test:
     name: Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
