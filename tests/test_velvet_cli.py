@@ -12,17 +12,22 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import velvet_cli
 from services.local_status_client import LocalStatusResponse
+from services.startup_doctor import RuntimePreflightReport
 
 
 class TestVelvetCli(unittest.TestCase):
+    @patch("velvet_cli.run_runtime_preflight")
+    def test_doctor_reports_ready(self, doctor):
+        doctor.return_value = RuntimePreflightReport(True, "ready", ())
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
+            code = velvet_cli.main(["doctor"])
+        self.assertEqual(code, 0)
+        self.assertTrue(json.loads(stdout.getvalue())["ready"])
+
     @patch("velvet_cli.request_local_status")
     def test_status_success_prints_json_and_returns_zero(self, request_status):
-        request_status.return_value = LocalStatusResponse(
-            ok=True,
-            state="completed",
-            output={"status": "ready", "actuation_performed": False},
-            errors=(),
-        )
+        request_status.return_value = LocalStatusResponse(ok=True, state="completed", output={"status": "ready", "actuation_performed": False}, errors=())
         stdout = io.StringIO()
         with redirect_stdout(stdout):
             code = velvet_cli.main(["status", "--detail", "full"])
@@ -32,12 +37,7 @@ class TestVelvetCli(unittest.TestCase):
 
     @patch("velvet_cli.request_host_telemetry")
     def test_telemetry_success_uses_host_route_client(self, request_telemetry):
-        request_telemetry.return_value = LocalStatusResponse(
-            ok=True,
-            state="completed",
-            output={"uptime_seconds": 12.0, "actuation_performed": False},
-            errors=(),
-        )
+        request_telemetry.return_value = LocalStatusResponse(ok=True, state="completed", output={"uptime_seconds": 12.0, "actuation_performed": False}, errors=())
         stdout = io.StringIO()
         with redirect_stdout(stdout):
             code = velvet_cli.main(["telemetry", "--detail", "full"])
@@ -46,12 +46,7 @@ class TestVelvetCli(unittest.TestCase):
 
     @patch("velvet_cli.request_can_observation")
     def test_can_observation_uses_bounded_frame_request(self, request_can):
-        request_can.return_value = LocalStatusResponse(
-            ok=True,
-            state="completed",
-            output={"frame_count": 0, "frames": [], "actuation_performed": False},
-            errors=(),
-        )
+        request_can.return_value = LocalStatusResponse(ok=True, state="completed", output={"frame_count": 0, "frames": [], "actuation_performed": False}, errors=())
         stdout = io.StringIO()
         with redirect_stdout(stdout):
             code = velvet_cli.main(["can-observe", "--max-frames", "5"])
@@ -61,12 +56,7 @@ class TestVelvetCli(unittest.TestCase):
 
     @patch("velvet_cli.request_local_status")
     def test_status_denial_prints_stderr_and_returns_two(self, request_status):
-        request_status.return_value = LocalStatusResponse(
-            ok=False,
-            state="policy_denied",
-            output=None,
-            errors=("policy denied capability",),
-        )
+        request_status.return_value = LocalStatusResponse(ok=False, state="policy_denied", output=None, errors=("policy denied capability",))
         stderr = io.StringIO()
         with redirect_stderr(stderr):
             code = velvet_cli.main(["status"])
