@@ -1,17 +1,14 @@
 # SPDX-License-Identifier: GPL-3.0-only
-"""Narrow local request entry point for the Runtime pipeline.
-
-Clients may request a published route. They cannot supply executor names,
-profile/session/body bindings, module paths, shell commands, or callables.
-"""
+"""Narrow local request entry point for the Runtime pipeline."""
 
 from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from services.court_intent import Intent, normalize
+from services.request_origin import RequestOrigin, local_origin
 
 
 @dataclass(frozen=True)
@@ -25,12 +22,37 @@ class IntentRoute:
 
 
 class LocalIntentGateway:
-    def __init__(self, *, pipeline, identity_context, routes: tuple[IntentRoute, ...]):
+    def __init__(
+        self,
+        *,
+        pipeline,
+        identity_context,
+        routes: tuple[IntentRoute, ...],
+        origin_observer: Callable[[RequestOrigin], None] | None = None,
+    ):
         self._pipeline = pipeline
         self._identity = identity_context
         self._routes = self._build_routes(routes)
+        self._origin_observer = origin_observer
 
     def submit(self, request: Mapping[str, Any], *, now: int | None = None):
+        received_at = int(now if now is not None else time.time())
+        origin = local_origin(
+            peer_id="runtime-in-process",
+            transport_id="python-call",
+            received_at=received_at,
+        )
+        return self.submit_from_origin(request, origin=origin, now=received_at)
+
+    def submit_from_origin(
+        self,
+        request: Mapping[str, Any],
+        *,
+        origin: RequestOrigin,
+        now: int | None = None,
+    ):
+        if not isinstance(origin, RequestOrigin):
+            raise TypeError("origin must be RequestOrigin")
         if not isinstance(request, Mapping):
             raise TypeError("local intent request must be a mapping")
 
@@ -49,14 +71,19 @@ class LocalIntentGateway:
         parameters = request.get("parameters", {})
         if not isinstance(parameters, Mapping):
             raise ValueError("parameters must be a mapping")
-        parameter_keys = set(parameters)
-        unsupported = parameter_keys - set(route.allowed_parameters)
+        unsupported = set(parameters) - set(route.allowed_parameters)
         if unsupported:
             raise ValueError(f"unsupported parameters for route: {sorted(unsupported)}")
 
+        requested_at = int(now if now is not None else origin.received_at)
+        if requested_at < origin.received_at:
+            raise ValueError("request time cannot precede origin time")
+
+        if self._origin_observer is not None:
+            self._origin_observer(origin)
+
         body = self._identity.body
         session = self._identity.session
-        requested_at = int(now if now is not None else time.time())
         intent = Intent(
             intent_id=intent_id,
             action=route.action,
