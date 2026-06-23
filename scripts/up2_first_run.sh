@@ -22,22 +22,15 @@ cd "${REPO_ROOT}"
 [[ -f main.py ]] || fail "main.py was not found in ${REPO_ROOT}"
 [[ -f velvet_cli.py ]] || fail "velvet_cli.py was not found in ${REPO_ROOT}"
 [[ -f scripts/bootstrap_dev_state.py ]] || fail "development bootstrap is missing"
+[[ -f scripts/verify_up2_dependencies.py ]] || fail "UP2 dependency verifier is missing"
 
 echo "[VELVET FIRST RUN] Repository: ${REPO_ROOT}"
 echo "[VELVET FIRST RUN] Git: $(git --version)"
 echo "[VELVET FIRST RUN] Python: $(${PYTHON_BIN} --version 2>&1)"
 
-if ! "${PYTHON_BIN}" - <<'PY'
-import importlib.util
-import sys
-required = ("velvet_event_protocol", "velvet_continuity")
-missing = [name for name in required if importlib.util.find_spec(name) is None]
-if missing:
-    print("missing local packages: " + ", ".join(missing), file=sys.stderr)
-    raise SystemExit(1)
-PY
-then
-  fail "required local packages are missing; install the sibling Velvet packages before continuing"
+echo "[VELVET FIRST RUN] Verifying UP2 dependency contract."
+if ! "${PYTHON_BIN}" scripts/verify_up2_dependencies.py; then
+  fail "UP2 dependency contract is not satisfied"
 fi
 
 if [[ ! -f "${ENV_FILE}" ]]; then
