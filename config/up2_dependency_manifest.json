@@ -1,11 +1,19 @@
 {
-  "schema": "velvet.runtime.up2_dependency_manifest.v1",
+  "schema": "velvet.runtime.up2_dependency_manifest.v2",
   "target": {
     "node": "Founder UP2",
     "operating_system": "Ubuntu Linux",
-    "supported_python": {
-      "minimum": "3.10",
-      "maximum_exclusive": "3.13"
+    "python": {
+      "baseline": {
+        "minimum": "3.8",
+        "maximum_exclusive": "3.13",
+        "purpose": "safe bootstrap, dependency doctor, snapshots, read-only Runtime, and minimal Interface"
+      },
+      "preferred": {
+        "minimum": "3.10",
+        "maximum_exclusive": "3.13",
+        "purpose": "full current CI coverage and newer optional capabilities"
+      }
     }
   },
   "system_commands": [

@@ -14,25 +14,33 @@ Verifier:
 python3 scripts/verify_up2_dependencies.py
 ```
 
-A successful report returns exit code `0` and:
+A successful baseline report returns exit code `0` and includes:
 
 ```json
 {
-  "ready": true
+  "ready": true,
+  "baseline_ready": true,
+  "preferred_ready": false,
+  "capability_tier": "baseline"
 }
 ```
 
-A blocked report returns exit code `1` and names the missing command, package, Interface dependency, or unsupported Python version. A malformed manifest returns exit code `2`.
+A blocked report returns exit code `1`. A malformed manifest returns exit code `2`.
 
-## Supported Python
+## Python capability tiers
 
-The Runtime hardware candidate follows the same interpreter family tested by Runtime CI:
+Velvet supports two interpreter lanes:
 
 ```text
-Python >= 3.10 and < 3.13
+Baseline:  Python >= 3.8 and < 3.13
+Preferred: Python >= 3.10 and < 3.13
 ```
 
-Do not assume the Ubuntu system `python3` is acceptable. Verify it explicitly.
+The baseline lane covers safe bootstrap, dependency verification, startup doctor, first-boot snapshots, bounded read-only Runtime launch, minimal Interface status, receipts, and continuity checks.
+
+The preferred lane adds full current Runtime CI coverage and newer optional capabilities.
+
+Python 3.8 or 3.9 must not be treated as a total Runtime failure merely because the preferred lane is unavailable. Optional capabilities are reported separately.
 
 ## Required local Python imports
 
@@ -57,35 +65,30 @@ velvet_interface
 └── velvet-vehicle-can/        # optional for the first wake-up
 ```
 
-Install the local packages into one Python environment. For example, from that parent directory:
-
-```bash
-python3 -m pip install -e ./velvet-event-protocol
-python3 -m pip install -e ./velvet-continuity-spine
-python3 -m pip install -e './velvet-interface[qt]'
-```
-
-The dependency verifier does not run these commands. Installation remains an explicit human action.
+Install local packages explicitly. The verifier never installs software.
 
 ## Security posture
 
-The manifest permanently declares that the first UP² launch requires:
+The first UP² launch keeps network listening, physical authority, actuation, and automatic installation disabled.
+
+Satisfying dependencies does not create identity, grant presence, enable actuation, configure CAN, or start a service.
+
+## Graceful degradation
+
+Capability loss must be explicit and local. A valid report may say:
 
 ```text
-network listener: false
-physical authority: false
-actuation: false
-automatic installation: false
+baseline Runtime ready: true
+preferred tier: unavailable
+optional CAN observation: unavailable
 ```
 
-Satisfying dependencies does not create identity, grant physical presence, enable actuation, configure CAN, or start a service.
+The verifier must not broaden authority or pretend an unavailable feature exists.
 
 ## First-run integration
-
-The normal safe check now begins with the dependency contract:
 
 ```bash
 bash scripts/up2_first_run.sh
 ```
 
-If the dependency contract fails, the first-run helper stops before development state is created or Runtime is started.
+If the baseline contract fails, the helper stops before development state is created or Runtime is started.

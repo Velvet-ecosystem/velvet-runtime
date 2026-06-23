@@ -7,15 +7,15 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_PATH = ROOT / "config/up2_dependency_manifest.json"
-SCHEMA = "velvet.runtime.up2_dependency_manifest.v1"
+SCHEMA = "velvet.runtime.up2_dependency_manifest.v2"
 
 
-def _require_strings(values: Any, field: str) -> list[str]:
+def _require_strings(values: Any, field: str) -> List[str]:
     if not isinstance(values, list) or not values:
         raise ValueError(f"{field} must be a non-empty list")
     if not all(isinstance(value, str) and value.strip() for value in values):
@@ -23,6 +23,17 @@ def _require_strings(values: Any, field: str) -> list[str]:
     if len(values) != len(set(values)):
         raise ValueError(f"{field} must not contain duplicates")
     return values
+
+
+def _require_python_bounds(values: Any, field: str, minimum: str, maximum: str) -> None:
+    if not isinstance(values, dict):
+        raise ValueError(f"{field} must be an object")
+    if values.get("minimum") != minimum:
+        raise ValueError(f"{field}.minimum must remain {minimum}")
+    if values.get("maximum_exclusive") != maximum:
+        raise ValueError(f"{field}.maximum_exclusive must remain {maximum}")
+    if not isinstance(values.get("purpose"), str) or not values["purpose"].strip():
+        raise ValueError(f"{field}.purpose must be a non-empty string")
 
 
 def validate_manifest(payload: Dict[str, Any]) -> None:
@@ -33,13 +44,12 @@ def validate_manifest(payload: Dict[str, Any]) -> None:
     if not isinstance(target, dict):
         raise ValueError("target must be an object")
 
-    supported = target.get("supported_python")
-    if not isinstance(supported, dict):
-        raise ValueError("target.supported_python must be an object")
-    if supported.get("minimum") != "3.10":
-        raise ValueError("minimum supported Python must remain 3.10")
-    if supported.get("maximum_exclusive") != "3.13":
-        raise ValueError("maximum exclusive Python must remain 3.13")
+    python_contract = target.get("python")
+    if not isinstance(python_contract, dict):
+        raise ValueError("target.python must be an object")
+
+    _require_python_bounds(python_contract.get("baseline"), "target.python.baseline", "3.8", "3.13")
+    _require_python_bounds(python_contract.get("preferred"), "target.python.preferred", "3.10", "3.13")
 
     _require_strings(payload.get("system_commands"), "system_commands")
     required = _require_strings(payload.get("python_imports"), "python_imports")

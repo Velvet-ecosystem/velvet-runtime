@@ -9,31 +9,38 @@ import json
 import shutil
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MANIFEST = ROOT / "config/up2_dependency_manifest.json"
+SCHEMA = "velvet.runtime.up2_dependency_manifest.v2"
 
 
 def _version_tuple(text: str) -> Tuple[int, ...]:
     return tuple(int(part) for part in text.split("."))
 
 
+def _version_supported(current: Tuple[int, ...], bounds: Dict[str, Any]) -> bool:
+    minimum = _version_tuple(str(bounds.get("minimum", "0")))
+    maximum = _version_tuple(str(bounds.get("maximum_exclusive", "999")))
+    return minimum <= current < maximum
+
+
 def load_manifest(path: Path = DEFAULT_MANIFEST) -> Dict[str, Any]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError("dependency manifest root must be an object")
-    if payload.get("schema") != "velvet.runtime.up2_dependency_manifest.v1":
+    if payload.get("schema") != SCHEMA:
         raise ValueError("unsupported dependency manifest schema")
     return payload
 
 
 def verify(manifest: Dict[str, Any]) -> Dict[str, Any]:
     target = manifest.get("target", {})
-    supported = target.get("supported_python", {})
-    minimum = _version_tuple(str(supported.get("minimum", "0")))
-    maximum = _version_tuple(str(supported.get("maximum_exclusive", "999")))
+    python_contract = target.get("python", {})
+    baseline = python_contract.get("baseline", {})
+    preferred = python_contract.get("preferred", {})
     current = sys.version_info[:3]
 
     command_results = []
@@ -56,17 +63,39 @@ def verify(manifest: Dict[str, Any]) -> Dict[str, Any]:
 
     missing_required = [item["name"] for item in command_results + import_results if not item["available"]]
     missing_interface = [item["name"] for item in interface_results if not item["available"]]
-    python_supported = minimum <= current < maximum
 
-    ready = python_supported and not missing_required and not missing_interface
+    baseline_supported = _version_supported(current, baseline)
+    preferred_supported = _version_supported(current, preferred)
+    baseline_ready = baseline_supported and not missing_required and not missing_interface
+    preferred_ready = preferred_supported and baseline_ready
+
+    if preferred_ready:
+        capability_tier = "preferred"
+    elif baseline_ready:
+        capability_tier = "baseline"
+    else:
+        capability_tier = "unsupported"
+
+    unavailable_optional = [item["name"] for item in optional_results if not item["available"]]
+
     return {
-        "schema": "velvet.runtime.up2_dependency_report.v1",
-        "ready": ready,
+        "schema": "velvet.runtime.up2_dependency_report.v2",
+        "ready": baseline_ready,
+        "baseline_ready": baseline_ready,
+        "preferred_ready": preferred_ready,
+        "capability_tier": capability_tier,
         "python": {
             "current": ".".join(str(part) for part in current),
-            "minimum": supported.get("minimum"),
-            "maximum_exclusive": supported.get("maximum_exclusive"),
-            "supported": python_supported,
+            "baseline": {
+                "minimum": baseline.get("minimum"),
+                "maximum_exclusive": baseline.get("maximum_exclusive"),
+                "supported": baseline_supported,
+            },
+            "preferred": {
+                "minimum": preferred.get("minimum"),
+                "maximum_exclusive": preferred.get("maximum_exclusive"),
+                "supported": preferred_supported,
+            },
         },
         "commands": command_results,
         "required_imports": import_results,
@@ -74,11 +103,12 @@ def verify(manifest: Dict[str, Any]) -> Dict[str, Any]:
         "interface_imports": interface_results,
         "missing_required": missing_required,
         "missing_interface": missing_interface,
+        "unavailable_optional": unavailable_optional,
         "security": manifest.get("security", {}),
     }
 
 
-def main(argv: List[str] | None = None) -> int:
+def main(argv: Optional[List[str]] = None) -> int:
     path = Path(argv[0]) if argv else DEFAULT_MANIFEST
     try:
         report = verify(load_manifest(path))
