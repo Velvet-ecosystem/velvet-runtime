@@ -1,0 +1,46 @@
+{
+  "schema": "velvet.runtime.hardware_candidate.v1",
+  "candidate_id": "up2-python38-baseline-2026-06-24",
+  "status": "candidate-pending-hardware-validation",
+  "target": {
+    "node": "Founder UP2",
+    "operating_system": "Ubuntu Linux",
+    "baseline_python": ">=3.8,<3.13",
+    "preferred_python": ">=3.10,<3.13"
+  },
+  "frozen_sources": {
+    "velvet-runtime": "ebdf4b357b0bb8463664a8787704a779f57adeee",
+    "velvet-interface": "94bd9ad2439fb65cf4f137891953d3259fb1566a",
+    "velvet-event-protocol": "735dfbfe047987f4d94a31678e03ee61c9cfccf1",
+    "velvet-continuity-spine": "ed01c89ad74004047ad235a7f73ff9de45b044d9"
+  },
+  "entrypoints": {
+    "dependency_verifier": "python3 scripts/verify_up2_dependencies.py",
+    "safe_first_run": "bash scripts/up2_first_run.sh",
+    "runtime": "bash scripts/run_dev.sh",
+    "interface": "python3 examples/runtime_boot_window.py --snapshot <runtime>/.velvet-dev/first-boot-snapshot.json"
+  },
+  "expected_evidence": {
+    "dependency_report": {
+      "ready": true,
+      "baseline_ready": true,
+      "capability_tier": ["baseline", "preferred"]
+    },
+    "doctor_ready": true,
+    "actuation_performed": false,
+    "runtime_idle_loop": true,
+    "interface_boot_window": true
+  },
+  "required_safety_posture": {
+    "network_listener": false,
+    "physical_authority": false,
+    "actuation": false,
+    "automatic_install": false,
+    "can_transmit": false
+  },
+  "notes": [
+    "This candidate supersedes the interpreter floor of the 2026-06-23 first-wake checkpoint but does not rewrite that historical candidate.",
+    "Python 3.8 and 3.9 are baseline lanes. Python 3.10 through 3.12 are preferred lanes.",
+    "Missing optional capability must degrade locally and must not invalidate the bounded core."
+  ]
+}
