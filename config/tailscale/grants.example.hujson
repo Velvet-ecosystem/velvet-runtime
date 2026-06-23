@@ -1,0 +1,26 @@
+// Example only. Replace placeholder identities before deployment.
+// This policy exposes only the future Velvet Gateway TCP port to one explicit
+// operator group. It does not advertise subnets, enable Funnel, or grant SSH.
+{
+  "groups": {
+    "group:velvet-operators": [
+      "operator@example.com"
+    ]
+  },
+
+  "tagOwners": {
+    "tag:velvet-gateway": [
+      "autogroup:admin"
+    ]
+  },
+
+  "grants": [
+    {
+      "src": ["group:velvet-operators"],
+      "dst": ["tag:velvet-gateway"],
+      "ip": ["tcp:8443"]
+    }
+  ],
+
+  "ssh": []
+}
