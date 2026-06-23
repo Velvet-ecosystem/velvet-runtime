@@ -1,0 +1,32 @@
+name: Doctor Diagnostic
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile changed Python
+        run: python -m py_compile velvet_cli.py services/startup_doctor.py services/runtime_preflight.py
+      - name: Run focused CLI tests
+        run: python -m unittest tests.test_velvet_cli
+      - name: Run full suite with compact failure output
+        shell: bash
+        run: |
+          set +e
+          python -m unittest discover -s tests > full-suite.log 2>&1
+          code=$?
+          if [ "$code" -ne 0 ]; then
+            tail -n 80 full-suite.log
+            exit "$code"
+          fi
+          tail -n 20 full-suite.log
