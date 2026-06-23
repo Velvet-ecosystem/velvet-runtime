@@ -104,6 +104,11 @@ class TestCanSignalSummaryExecutor(unittest.TestCase):
         self.assertTrue(observer.closed)
 
     def test_missing_signal_map_fails_closed(self):
+        try:
+            import velvet_vehicle_can  # noqa: F401
+        except ImportError:
+            self.skipTest("velvet-vehicle-can dependency is not installed")
+
         observer = FakeObserver([])
         handler, _ = self._handler_for(observer, object())
 
