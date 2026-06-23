@@ -26,7 +26,7 @@ class RequestOrigin:
             raise TypeError("remote must be bool")
         if not isinstance(self.physical_presence, bool):
             raise TypeError("physical_presence must be bool")
-        if not isinstance(self.received_at, int) or self.received_at < 0:
+        if isinstance(self.received_at, bool) or not isinstance(self.received_at, int) or self.received_at < 0:
             raise ValueError("received_at must be a non-negative integer")
         if self.remote and self.physical_presence:
             raise ValueError("remote origin cannot assert physical presence")
