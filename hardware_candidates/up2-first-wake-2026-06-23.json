@@ -1,0 +1,35 @@
+{
+  "schema": "velvet.runtime.hardware_candidate.v1",
+  "candidate": "up2-first-wake-2026-06-23",
+  "target": "Founder UP2",
+  "runtime": {
+    "repository": "Velvet-ecosystem/velvet-runtime",
+    "source_commit": "f2f2f6d8e0a3a924e91efdbdce0be53430aed6e2"
+  },
+  "interface": {
+    "repository": "Velvet-ecosystem/velvet-interface",
+    "source_commit": "df729d0fee15439a2586152aa13755573b1105a8",
+    "entrypoint": "examples/runtime_boot_window.py"
+  },
+  "launch": {
+    "dependency_check": "python3 scripts/verify_up2_dependencies.py",
+    "safe_first_run": "bash scripts/up2_first_run.sh",
+    "runtime_start": "bash scripts/run_dev.sh",
+    "snapshot": ".velvet-dev/first-boot-snapshot.json"
+  },
+  "expected_evidence": [
+    "dependency report ready=true",
+    "runtime doctor ready=true",
+    "first-boot snapshot actuation_performed=false",
+    "Runtime reaches idle loop",
+    "Interface boot window renders bounded snapshot state"
+  ],
+  "security": {
+    "network_listener": false,
+    "physical_authority": false,
+    "actuation": false,
+    "automatic_install": false,
+    "can_transmission": false
+  },
+  "status": "candidate-pending-hardware-validation"
+}
