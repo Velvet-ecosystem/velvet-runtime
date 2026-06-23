@@ -3,7 +3,7 @@
 Start Velvet Runtime with repo-local development-only state:
 
 ```bash
-./scripts/run_dev.sh
+bash scripts/run_dev.sh
 ```
 
 The launcher performs this sequence:
@@ -18,7 +18,7 @@ The launcher performs this sequence:
 To prepare and validate the state without entering the Runtime idle loop:
 
 ```bash
-./scripts/run_dev.sh --check
+bash scripts/run_dev.sh --check
 ```
 
 The launcher accepts these optional environment overrides for testing or unusual local setups:
