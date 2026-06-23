@@ -23,8 +23,9 @@ htmlcov/
 logs/
 *.log
 
-# Runtime data — receipts are deployment-specific, not committed
+# Runtime data — receipts and local development keys are not committed
 receipts/receipts.jsonl
+.velvet-dev/
 
 # OS artifacts
 .DS_Store
