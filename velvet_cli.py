@@ -14,7 +14,6 @@ from services.local_status_client import (
     request_host_telemetry,
     request_local_status,
 )
-from services.startup_doctor import run_runtime_preflight
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -37,6 +36,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "doctor":
+        from services.startup_doctor import run_runtime_preflight
+
         report = run_runtime_preflight()
         print(json.dumps(report.to_dict(), indent=2, sort_keys=True), file=sys.stdout if report.ready else sys.stderr)
         return 0 if report.ready else 2
