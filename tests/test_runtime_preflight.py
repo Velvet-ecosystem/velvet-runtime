@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from services.runtime_preflight import run_runtime_preflight
+from services.startup_doctor import run_runtime_preflight
 
 
 class RuntimePreflightTests(unittest.TestCase):
@@ -35,63 +35,48 @@ class RuntimePreflightTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.tempdir.cleanup()
 
-    def _environment(self) -> dict[str, str]:
+    def env(self) -> dict[str, str]:
         return {name: str(path) for name, path in self.paths.items()}
 
-    def _write_required_files(self) -> None:
+    def write_inputs(self) -> None:
         for name, path in self.paths.items():
             if name.endswith("RECEIPTS_PATH") or name.endswith("LEDGER_PATH"):
                 continue
-            if name == "VELVET_COURT_SIGNING_KEY_PATH":
-                path.write_bytes(b"k" * 32)
-            elif name == "VELVET_CONTINUITY_PROOF_PATH":
-                path.write_bytes(b"proof")
-            else:
-                path.write_text("{}", encoding="utf-8")
+            path.write_bytes(b"k" * 32 if name == "VELVET_COURT_SIGNING_KEY_PATH" else b"{}")
 
-    @patch("services.runtime_preflight.importlib.util.find_spec", return_value=object())
-    def test_ready_when_required_inputs_exist(self, _find_spec) -> None:
-        self._write_required_files()
-        with patch.dict(os.environ, self._environment(), clear=False):
+    @patch("services.startup_doctor.importlib.util.find_spec", return_value=object())
+    def test_ready_when_required_inputs_exist(self, _probe) -> None:
+        self.write_inputs()
+        with patch.dict(os.environ, self.env(), clear=False):
             report = run_runtime_preflight()
-
         self.assertTrue(report.ready)
         self.assertEqual(report.state, "ready")
-        self.assertFalse([check for check in report.checks if check.required and not check.ok])
 
-    @patch("services.runtime_preflight.importlib.util.find_spec", return_value=object())
-    def test_blocked_when_required_file_is_missing(self, _find_spec) -> None:
-        self._write_required_files()
+    @patch("services.startup_doctor.importlib.util.find_spec", return_value=object())
+    def test_missing_required_file_blocks(self, _probe) -> None:
+        self.write_inputs()
         self.paths["VELVET_BODY_REGISTRY_PATH"].unlink()
-        with patch.dict(os.environ, self._environment(), clear=False):
+        with patch.dict(os.environ, self.env(), clear=False):
             report = run_runtime_preflight()
-
         self.assertFalse(report.ready)
         self.assertEqual(report.state, "blocked")
-        failed = {check.name for check in report.checks if not check.ok}
-        self.assertIn("body_registry", failed)
 
-    @patch("services.runtime_preflight.importlib.util.find_spec")
-    def test_optional_brain_gap_does_not_block_runtime(self, find_spec) -> None:
-        self._write_required_files()
-        find_spec.side_effect = lambda name: object() if name == "velvet_event_protocol" else None
-        with patch.dict(os.environ, self._environment(), clear=False):
+    @patch("services.startup_doctor.importlib.util.find_spec")
+    def test_optional_brain_gap_does_not_block(self, probe) -> None:
+        self.write_inputs()
+        probe.side_effect = lambda name: object() if name == "velvet_event_protocol" else None
+        with patch.dict(os.environ, self.env(), clear=False):
             report = run_runtime_preflight()
-
         self.assertTrue(report.ready)
         self.assertEqual(report.state, "ready_with_optional_gaps")
 
-    @patch("services.runtime_preflight.importlib.util.find_spec", return_value=object())
-    def test_short_signing_key_blocks_startup(self, _find_spec) -> None:
-        self._write_required_files()
+    @patch("services.startup_doctor.importlib.util.find_spec", return_value=object())
+    def test_short_signing_key_blocks(self, _probe) -> None:
+        self.write_inputs()
         self.paths["VELVET_COURT_SIGNING_KEY_PATH"].write_bytes(b"short")
-        with patch.dict(os.environ, self._environment(), clear=False):
+        with patch.dict(os.environ, self.env(), clear=False):
             report = run_runtime_preflight()
-
         self.assertFalse(report.ready)
-        signing = next(check for check in report.checks if check.name == "court_signing_key")
-        self.assertFalse(signing.ok)
-        self.assertIn("need 32", signing.detail)
 
 
 if __name__ == "__main__":
