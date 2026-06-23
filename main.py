@@ -96,8 +96,8 @@ def main():
     )
 
     logger.info(
-        "[BOOT] Execution pipeline provisioned with three read-only executors "
-        "and three local routes; physical authority remains disabled."
+        "[BOOT] Execution pipeline provisioned with four read-only executors "
+        "and four local routes; physical authority remains disabled."
     )
 
     logger.info("[BOOT] Entering idle loop.")
