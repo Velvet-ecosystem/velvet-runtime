@@ -14,11 +14,14 @@ from services.local_status_client import (
     request_host_telemetry,
     request_local_status,
 )
+from services.runtime_preflight import run_runtime_preflight
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="velvet", description="Local Velvet Runtime command line")
     subcommands = parser.add_subparsers(dest="command", required=True)
+
+    subcommands.add_parser("doctor", help="inspect local startup readiness without changing state")
 
     status = subcommands.add_parser("status", help="request receipted read-only Runtime status")
     status.add_argument("--detail", choices=("summary", "full"), default="summary")
@@ -38,6 +41,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+
+    if args.command == "doctor":
+        report = run_runtime_preflight()
+        stream = sys.stdout if report.ready else sys.stderr
+        print(json.dumps(report.to_dict(), indent=2, sort_keys=True), file=stream)
+        return 0 if report.ready else 2
+
     try:
         if args.command == "status":
             response = request_local_status(detail=args.detail)
