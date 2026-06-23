@@ -1,0 +1,37 @@
+{
+  "schema": "velvet.runtime.up2_dependency_manifest.v1",
+  "target": {
+    "node": "Founder UP2",
+    "operating_system": "Ubuntu Linux",
+    "supported_python": {
+      "minimum": "3.10",
+      "maximum_exclusive": "3.13"
+    }
+  },
+  "system_commands": [
+    "git",
+    "python3"
+  ],
+  "python_imports": [
+    "yaml",
+    "velvet_event_protocol",
+    "velvet_continuity"
+  ],
+  "optional_python_imports": [
+    "velvet_vehicle_can"
+  ],
+  "interface": {
+    "enabled": true,
+    "python_imports": [
+      "PyQt5",
+      "velvet_interface"
+    ],
+    "boot_window": "examples/runtime_boot_window.py"
+  },
+  "security": {
+    "network_listener_required": false,
+    "physical_authority_granted": false,
+    "actuation_required": false,
+    "automatic_install_allowed": false
+  }
+}
