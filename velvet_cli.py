@@ -20,6 +20,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="velvet", description="Local Velvet Runtime command line")
     subcommands = parser.add_subparsers(dest="command", required=True)
     subcommands.add_parser("doctor", help="inspect local startup readiness without changing state")
+    bootstrap = subcommands.add_parser(
+        "dev-bootstrap",
+        help="create an isolated unprovisioned development state tree",
+    )
+    bootstrap.add_argument("--root", default=".velvet-dev/state")
+    bootstrap.add_argument("--overwrite", action="store_true")
     snapshot = subcommands.add_parser("boot-snapshot", help="capture a bounded first-boot status report")
     snapshot.add_argument("--service", default="velvet-runtime.service")
     status = subcommands.add_parser("status", help="request receipted read-only Runtime status")
@@ -43,6 +49,16 @@ def main(argv: list[str] | None = None) -> int:
         report = run_runtime_preflight()
         print(json.dumps(report.to_dict(), indent=2, sort_keys=True), file=sys.stdout if report.ready else sys.stderr)
         return 0 if report.ready else 2
+    if args.command == "dev-bootstrap":
+        from services.development_state import bootstrap_development_state
+
+        try:
+            result = bootstrap_development_state(args.root, overwrite=args.overwrite)
+        except Exception as exc:
+            print(json.dumps({"ok": False, "state": "development_bootstrap_failed", "errors": [str(exc)]}, sort_keys=True), file=sys.stderr)
+            return 1
+        print(json.dumps({"ok": True, "state": "development_unprovisioned", "output": result.to_dict()}, indent=2, sort_keys=True))
+        return 0
     if args.command == "boot-snapshot":
         from services.first_boot_snapshot import build_first_boot_snapshot
 
