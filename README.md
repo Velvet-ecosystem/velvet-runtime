@@ -319,19 +319,28 @@ The current Python boundary provides interface hygiene, not a malicious-code san
 python3 -m unittest discover -s tests -v
 ```
 
-Runtime CI tests Python 3.10, 3.11, and 3.12.
+Runtime CI enforces a Python 3.8 baseline-contract lane and full test lanes on Python 3.10, 3.11, and 3.12.
 
 ## Cleanup Rhythm
 
 After roughly three to five feature PRs, or before introducing a new authority boundary, pause for cleanup and hardening.
 
+## Completed Foundation
+
+- Development-state bootstrap for a bounded read-only launch
+- One-command development Runtime start
+- UP² systemd deployment recipe
+- visible Interface boot-status window
+- Python 3.8 baseline capability contract
+- frozen UP² first-wake candidate and Python 3.8 baseline candidate
+- four read-only observation routes with Court, gates, executors, and receipts
+
 ## Next Milestones
 
-1. Development-state bootstrap for a read-only local launch
-2. One-command development Runtime start
-3. UP² systemd deployment recipe
-4. Interface scenes for the same bounded observation routes
-5. First low-risk physical executor only after explicit local deployment review
+1. Validate the Python 3.8 baseline candidate on the physical UP² and preserve the evidence bundle.
+2. Keep Interface scenes bounded to the same read-only routes and capability reports.
+3. Add cross-repo compatibility reporting to startup diagnostics.
+4. Design the first low-risk physical executor only after explicit local deployment review.
 
 ## Security Posture
 
