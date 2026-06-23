@@ -24,11 +24,10 @@ def build_parser() -> argparse.ArgumentParser:
         "dev-bootstrap",
         help="create repo-local read-only development state",
     )
-    dev_start = subcommands.add_parser(
+    subcommands.add_parser(
         "dev-start",
-        help="load development state, run doctor, and start the normal Runtime",
+        help="load repo-local development state, run doctor, and start the normal Runtime",
     )
-    dev_start.add_argument("--env", default=".velvet-dev/env.sh")
     snapshot = subcommands.add_parser("boot-snapshot", help="capture a bounded first-boot status report")
     snapshot.add_argument("--service", default="velvet-runtime.service")
     status = subcommands.add_parser("status", help="request receipted read-only Runtime status")
@@ -60,7 +59,7 @@ def main(argv: list[str] | None = None) -> int:
         from services.development_start import start_development_runtime
 
         try:
-            result = start_development_runtime(env_path=args.env)
+            result = start_development_runtime()
         except Exception as exc:
             print(json.dumps({"ok": False, "state": "development_start_failed", "errors": [str(exc)]}, sort_keys=True), file=sys.stderr)
             return 1
