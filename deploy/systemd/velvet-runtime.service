@@ -1,0 +1,34 @@
+[Unit]
+Description=Velvet Runtime
+Documentation=https://github.com/Velvet-ecosystem/velvet-runtime
+After=local-fs.target
+Wants=local-fs.target
+ConditionPathExists=/opt/velvet/runtime/main.py
+ConditionPathExists=/etc/velvet/runtime.env
+
+[Service]
+Type=simple
+User=velvet
+Group=velvet
+WorkingDirectory=/opt/velvet/runtime
+EnvironmentFile=/etc/velvet/runtime.env
+ExecStartPre=/usr/bin/python3 /opt/velvet/runtime/velvet_cli.py doctor
+ExecStart=/usr/bin/python3 /opt/velvet/runtime/main.py
+Restart=on-failure
+RestartSec=10s
+TimeoutStopSec=20s
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+ReadWritePaths=/opt/velvet/state
+
+[Install]
+WantedBy=multi-user.target
