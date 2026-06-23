@@ -19,14 +19,19 @@ jobs:
         run: python -m py_compile velvet_cli.py services/startup_doctor.py services/runtime_preflight.py
       - name: Run focused CLI tests
         run: python -m unittest tests.test_velvet_cli
-      - name: Run full suite with compact failure output
+      - name: Run full suite
+        id: suite
+        continue-on-error: true
         shell: bash
+        run: python -m unittest discover -s tests > full-suite.log 2>&1
+      - name: Upload compact suite log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: doctor-full-suite-log
+          path: full-suite.log
+      - name: Surface full-suite failure
+        if: steps.suite.outcome == 'failure'
         run: |
-          set +e
-          python -m unittest discover -s tests > full-suite.log 2>&1
-          code=$?
-          if [ "$code" -ne 0 ]; then
-            tail -n 80 full-suite.log
-            exit "$code"
-          fi
-          tail -n 20 full-suite.log
+          tail -n 80 full-suite.log
+          exit 1
