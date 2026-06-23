@@ -8,7 +8,7 @@ Velvet Runtime is designed for the Founder UP Squared and other Linux surfaces, 
 
 ## Current Status
 
-The secure request spine is implemented from boot identity through three read-only observation executors.
+The secure request spine is implemented from boot identity through four read-only observation executors.
 
 Current physical authority: **none**.
 
@@ -24,10 +24,11 @@ Runtime currently provides:
 - cross-process persistent replay protection
 - canonical Court, safety, and execution receipts
 - a narrow local intent gateway
-- three read-only routes and executors:
+- four read-only routes and executors:
   - `runtime-status`
   - `host-telemetry`
   - `can-observe`
+  - `can-signals`
 
 Runtime does **not** expose:
 
@@ -38,6 +39,16 @@ Runtime does **not** expose:
 - lock, lighting, climate, seat, steering, throttle, braking, or drive authority
 
 The courthouse can inspect itself, its host, and the vehicle bus. The machinery remains locked outside.
+
+## Startup Doctor
+
+```bash
+python3 velvet_cli.py doctor
+```
+
+Performs a read-only startup preflight for required packages, boot files, signing-key length, and writable receipt/replay paths. It does not generate identity, proof material, keys, or production policy.
+
+See [Runtime Doctor](docs/runtime_doctor.md).
 
 ## Core Execution Law
 
@@ -122,6 +133,7 @@ Currently registered read-only gates:
 - `runtime-status-read-only-gate`
 - `host-telemetry-read-only-gate`
 - `can-observe-read-only-gate`
+- `can-signal-summary-read-only-gate`
 
 See [Safety Gate Registry](docs/safety_gate_registry.md).
 
@@ -150,8 +162,6 @@ python3 velvet_cli.py status --detail full
 
 Reports bounded Runtime identity and security posture.
 
-See [Runtime Status Executor](docs/runtime_status_executor.md).
-
 ### Host Telemetry
 
 ```bash
@@ -161,19 +171,21 @@ python3 velvet_cli.py telemetry --detail full
 
 Reports bounded uptime, load, memory, disk, thermal data when available, and receipt/replay ledger file health.
 
-See [Host Telemetry Executor](docs/host_telemetry_executor.md).
-
 ### CAN Observation
 
 ```bash
 python3 velvet_cli.py can-observe --max-frames 10
 ```
 
-Receives 1 to 100 bounded classic-CAN frames through the receive-only interfaces from `velvet-vehicle-can`.
+Receives bounded classic-CAN frames through the receive-only interfaces from `velvet-vehicle-can`.
 
-The Linux CAN interface must be configured in kernel listen-only mode. Runtime does not configure bitrate or link state and does not run shell commands.
+### CAN Signal Summaries
 
-See [Runtime CAN Observation Executor](docs/can_observation_executor.md).
+```bash
+python3 velvet_cli.py can-signals --max-frames 32
+```
+
+Produces bounded decoded summaries when the optional `velvet-vehicle-can` decoder package is installed.
 
 Every successful observation result declares:
 
@@ -187,14 +199,6 @@ actuation_performed: false
 
 Consumed token identifiers are stored in an append-only JSONL ledger, locked across local processes, and reloaded after restart. A reboot does not revive a used token. Malformed history fails closed.
 
-Default path:
-
-```text
-/opt/velvet/state/execution/consumed_tokens.jsonl
-```
-
-See [Persistent Replay Ledger](docs/persistent_replay_ledger.md).
-
 ## Pipeline Provisioning
 
 Startup assembles:
@@ -203,25 +207,10 @@ Startup assembles:
 - local Court signing key
 - persistent replay ledger
 - canonical execution receipt sink
-- executor registry containing three read-only observers
-- safety registry containing their three read-only gates
+- executor registry containing four read-only observers
+- safety registry containing their four read-only gates
 
 The signing key must already exist locally and contain at least 32 bytes. Runtime does not generate, print, or commit it.
-
-Default paths:
-
-```text
-/opt/velvet/state/policy/court_policy.json
-/opt/velvet/state/court/signing_key.bin
-/opt/velvet/state/execution/consumed_tokens.jsonl
-/opt/velvet/state/receipts/execution.log
-```
-
-See:
-
-- [Runtime Pipeline Provisioning](docs/runtime_pipeline_provisioning.md)
-- [Canonical Receipt Sink Integration](docs/canonical_receipt_sink_integration.md)
-- [Boot Pipeline Integration](docs/boot_pipeline_integration.md)
 
 ## Local Intent Gateway
 
@@ -235,9 +224,7 @@ route-approved parameters
 
 Runtime supplies verified identity and trusted route bindings internally. Clients cannot supply executor names, raw capabilities, targets, module paths, shell commands, Python callables, or hardware handles.
 
-Three in-process read-only routes are present. No network listener is enabled.
-
-See [Local Intent Gateway](docs/local_intent_gateway.md).
+Four in-process read-only routes are present. No network listener is enabled.
 
 ## Runtime State Paths
 
@@ -259,39 +246,6 @@ See [Local Intent Gateway](docs/local_intent_gateway.md).
 
 Founder identity and proof material must be provisioned physically and locally on the Founder node. They must never be generated in chat, CI, or a cloud build environment.
 
-## Repository Structure
-
-```text
-velvet-runtime/
-├── main.py
-├── velvet_cli.py
-├── runtime_wiring.py
-├── config/
-├── services/
-│   ├── continuity_activation.py
-│   ├── court_authorization.py
-│   ├── safety_gate_registry.py
-│   ├── executor_manifest.py
-│   ├── approved_executor.py
-│   ├── token_replay_ledger.py
-│   ├── runtime_pipeline.py
-│   ├── pipeline_provisioning.py
-│   ├── local_intent_gateway.py
-│   ├── observation_gateway.py
-│   ├── runtime_status_executor.py
-│   ├── host_telemetry_executor.py
-│   ├── can_observation_executor.py
-│   └── module_loader.py
-├── docs/
-└── tests/
-```
-
-## Module Boundary
-
-Modules are trusted local plugins reviewed before deployment. They receive only the hardened publishing interface approved by the module loader. They do not receive the Court pipeline, executor registry, safety registry, or hardware handles.
-
-The current Python boundary provides interface hygiene, not a malicious-code sandbox. Untrusted plugins require process isolation and IPC.
-
 ## Tests
 
 ```bash
@@ -300,16 +254,12 @@ python3 -m unittest discover -s tests -v
 
 Runtime CI tests Python 3.10, 3.11, and 3.12.
 
-## Cleanup Rhythm
-
-After roughly three to five feature PRs, or before introducing a new authority boundary, pause for cleanup and hardening.
-
 ## Next Milestones
 
-1. Cleanup and security review of the three observation executors
-2. Deployment recipe for kernel listen-only CAN on the Founder node
-3. Read-only decoded signal summaries built from observed frames
-4. Interface scenes for the same bounded observation routes
+1. Development-state bootstrap for a read-only local launch
+2. One-command development Runtime start
+3. UP² systemd deployment recipe
+4. Interface scenes for the bounded observation routes
 5. First low-risk physical executor only after explicit local deployment review
 
 ## Security Posture
