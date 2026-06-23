@@ -54,7 +54,7 @@ class Up2DependencyManifestTests(unittest.TestCase):
             "scripts/validate_up2_manifest.py",
         ):
             source = (ROOT / relative_path).read_text(encoding="utf-8")
-            ast.parse(source, filename=relative_path, feature_version=(3, 8))
+            ast.parse(source, filename=relative_path, feature_version=8)
 
 
 if __name__ == "__main__":
