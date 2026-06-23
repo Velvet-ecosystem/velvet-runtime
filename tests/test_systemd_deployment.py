@@ -18,7 +18,7 @@ ENV_TEMPLATE = ROOT / "deploy/systemd/runtime.env.example"
 
 class SystemdDeploymentTests(unittest.TestCase):
     def test_unit_uses_non_root_user_and_doctor_preflight(self):
-        parser = configparser.ConfigParser(interpolation=None)
+        parser = configparser.ConfigParser(interpolation=None, strict=False)
         parser.read(UNIT, encoding="utf-8")
 
         service = parser["Service"]
