@@ -52,7 +52,7 @@ class TestPipelineProvisioning(unittest.TestCase):
                 provision_runtime_pipeline(capability_context=self.context(), paths=paths)
 
     @patch("services.pipeline_provisioning.make_execution_receipt_sink")
-    def test_pipeline_starts_with_three_read_only_observers(self, make_sink):
+    def test_pipeline_starts_with_four_read_only_observers(self, make_sink):
         make_sink.return_value = lambda envelope: envelope
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -64,10 +64,10 @@ class TestPipelineProvisioning(unittest.TestCase):
                 capability_context=self.context(),
                 paths=PipelinePaths(policy, key, root / "replay.jsonl", root / "execution.log"),
             )
-            self.assertEqual(pipeline.executor_registry.count(), 3)
+            self.assertEqual(pipeline.executor_registry.count(), 4)
             self.assertEqual(
                 pipeline.executor_registry.names(),
-                ("can-observe", "host-telemetry", "runtime-status"),
+                ("can-observe", "can-signals", "host-telemetry", "runtime-status"),
             )
             self.assertEqual(
                 pipeline.safety_check(SimpleNamespace(capability="comfort.request", target="cabin"), {}),

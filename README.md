@@ -8,7 +8,7 @@ Velvet Runtime is designed for the Founder UP Squared and other Linux surfaces, 
 
 ## Current Status
 
-The secure request spine is implemented from boot identity through three read-only observation executors.
+The secure request spine is implemented from boot identity through four read-only observation executors.
 
 Current physical authority: **none**.
 
@@ -24,10 +24,11 @@ Runtime currently provides:
 - cross-process persistent replay protection
 - canonical Court, safety, and execution receipts
 - a narrow local intent gateway
-- three read-only routes and executors:
+- four read-only routes and executors:
   - `runtime-status`
   - `host-telemetry`
   - `can-observe`
+  - `can-signals`
 
 Runtime does **not** expose:
 
@@ -83,6 +84,16 @@ The same configured identity context is reused by continuity verification, Court
 
 Identity loading, continuity, Court policy, signing-key loading, replay-ledger loading, receipt-family loading, or pipeline provisioning failures enter recovery before normal operation.
 
+## Startup Doctor
+
+```bash
+python3 velvet_cli.py doctor
+```
+
+Performs a read-only startup preflight for required packages, boot files, signing-key length, and writable receipt/replay paths. It does not generate identity, proof material, keys, or production policy.
+
+See [Runtime Doctor](docs/runtime_doctor.md).
+
 ## Identity and Authority Boundaries
 
 Velvet keeps system, surface, body, profile, session, physical presence, address preference, authority profile, capability proposal, and authorization separate.
@@ -122,6 +133,7 @@ Currently registered read-only gates:
 - `runtime-status-read-only-gate`
 - `host-telemetry-read-only-gate`
 - `can-observe-read-only-gate`
+- `can-signal-summary-read-only-gate`
 
 See [Safety Gate Registry](docs/safety_gate_registry.md).
 
@@ -175,6 +187,14 @@ The Linux CAN interface must be configured in kernel listen-only mode. Runtime d
 
 See [Runtime CAN Observation Executor](docs/can_observation_executor.md).
 
+### CAN Signal Summaries
+
+```bash
+python3 velvet_cli.py can-signals --max-frames 32
+```
+
+Produces bounded decoded summaries when the optional `velvet-vehicle-can` decoder package is installed.
+
 Every successful observation result declares:
 
 ```text
@@ -203,8 +223,8 @@ Startup assembles:
 - local Court signing key
 - persistent replay ledger
 - canonical execution receipt sink
-- executor registry containing three read-only observers
-- safety registry containing their three read-only gates
+- executor registry containing four read-only observers
+- safety registry containing their four read-only gates
 
 The signing key must already exist locally and contain at least 32 bytes. Runtime does not generate, print, or commit it.
 
@@ -235,7 +255,7 @@ route-approved parameters
 
 Runtime supplies verified identity and trusted route bindings internally. Clients cannot supply executor names, raw capabilities, targets, module paths, shell commands, Python callables, or hardware handles.
 
-Three in-process read-only routes are present. No network listener is enabled.
+Four in-process read-only routes are present. No network listener is enabled.
 
 See [Local Intent Gateway](docs/local_intent_gateway.md).
 
@@ -281,6 +301,7 @@ velvet-runtime/
 │   ├── runtime_status_executor.py
 │   ├── host_telemetry_executor.py
 │   ├── can_observation_executor.py
+│   ├── can_signal_summary_executor.py
 │   └── module_loader.py
 ├── docs/
 └── tests/
@@ -306,9 +327,9 @@ After roughly three to five feature PRs, or before introducing a new authority b
 
 ## Next Milestones
 
-1. Cleanup and security review of the three observation executors
-2. Deployment recipe for kernel listen-only CAN on the Founder node
-3. Read-only decoded signal summaries built from observed frames
+1. Development-state bootstrap for a read-only local launch
+2. One-command development Runtime start
+3. UP² systemd deployment recipe
 4. Interface scenes for the same bounded observation routes
 5. First low-risk physical executor only after explicit local deployment review
 
