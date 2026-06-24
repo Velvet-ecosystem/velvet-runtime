@@ -15,7 +15,7 @@ Usage:
   sudo bash scripts/install_up2_systemd.sh [options]
 
 Options:
-  --runtime-root PATH   Runtime checkout path (default: current checkout)
+  --runtime-root PATH   Runtime checkout path under /opt/velvet
   --user NAME           Service user (default: velvet)
   --group NAME          Service group (default: velvet)
   --enable-now          Enable and start the service immediately
@@ -58,6 +58,23 @@ if [[ ${EUID} -ne 0 ]]; then
   exit 1
 fi
 
+case "$RUNTIME_ROOT" in
+  /opt/velvet/*)
+    ;;
+  *)
+    cat >&2 <<EOF
+Refusing Runtime root outside /opt/velvet: $RUNTIME_ROOT
+
+The hardened unit uses ProtectHome=yes and a dedicated service account. A
+checkout under /home or /root may become unreachable after boot. Prepare a
+service checkout such as /opt/velvet/velvet-runtime, then rerun with:
+
+  sudo bash scripts/install_up2_systemd.sh --runtime-root /opt/velvet/velvet-runtime
+EOF
+    exit 1
+    ;;
+esac
+
 for required in \
   "$RUNTIME_ROOT/velvet_cli.py" \
   "$RUNTIME_ROOT/.venv/bin/python" \
@@ -82,6 +99,7 @@ if ! id "$SERVICE_USER" >/dev/null 2>&1; then
     "$SERVICE_USER"
 fi
 
+install -d -m 0755 -o root -g root /opt/velvet
 install -d -m 0700 -o "$SERVICE_USER" -g "$SERVICE_GROUP" /opt/velvet/state
 chown -R "$SERVICE_USER:$SERVICE_GROUP" "$RUNTIME_ROOT/.velvet-dev"
 
