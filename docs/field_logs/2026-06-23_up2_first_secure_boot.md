@@ -4,7 +4,7 @@
 **Board:** UP Squared  
 **Host OS:** Ubuntu 20.04  
 **Runtime mode:** Development, foreground, read-only  
-**Result:** Successful secure boot, five-minute idle hold, clean shutdown
+**Result:** Successful secure boot, five-minute idle hold, clean shutdown, and live route verification
 
 ## Summary
 
@@ -41,7 +41,7 @@ The Runtime imports were valid. The UP Squared preparation script had omitted th
 
 After cloning `velvet-receipts` beside the Runtime and adding it to the virtual environment's local workspace path, the boot proceeded successfully.
 
-A repository fix was opened to make this dependency part of future UP Squared preparation automatically.
+The UP Squared preparation path was updated to include this dependency automatically.
 
 ## Secure boot evidence
 
@@ -87,6 +87,46 @@ Shutdown was initiated with `Ctrl+C`. Runtime handled signal 2 and exited normal
 [BOOT] === Velvet Runtime Shutdown ===
 ```
 
+## Live route verification
+
+The Runtime was restarted and left running in one terminal while the four CLI observation routes were exercised from a second terminal.
+
+### `status`
+
+Result: passed.
+
+The route returned `ok: true`, `state: completed`, `mode: read-only`, `status: ready`, and confirmed that authorization remained required while both `actuation_granted` and `actuation_performed` were false.
+
+### `telemetry`
+
+Result: passed.
+
+The route returned real host disk, load, memory, uptime, receipt-ledger, and replay-ledger data with `ok: true`, `state: completed`, and no actuation granted or performed.
+
+### `can-observe`
+
+Result: reached the hardware boundary and failed closed as expected.
+
+The first attempt identified the missing optional `python-can` package. After installation, the route reached SocketCAN and returned:
+
+```text
+Could not access SocketCAN device can0 ([Errno 19] No such device)
+```
+
+This confirmed that the receive-only executor was invoked but no CAN interface was present. No transmission occurred.
+
+### `can-signals`
+
+Result: reached the decoder boundary and failed closed as expected.
+
+The route returned:
+
+```text
+VELVET_VEHICLE_FINGERPRINT is required for decoded CAN signals
+```
+
+This confirmed that decoded observations require an explicit vehicle binding before signal interpretation.
+
 ## Outcome
 
 The first hardware bring-up proved that Velvet Runtime can:
@@ -97,14 +137,18 @@ The first hardware bring-up proved that Velvet Runtime can:
 4. reject unauthorized actuation;
 5. provision the bounded read-only execution pipeline;
 6. remain stable in its idle loop;
-7. shut down cleanly.
+7. shut down cleanly;
+8. return real status and host telemetry through bounded routes;
+9. fail closed at missing CAN hardware and vehicle-binding boundaries.
 
 This marks the transition from repository architecture to a functioning local Runtime on the founder hardware.
 
 ## Next steps
 
-1. Permanently include `velvet-receipts` in the UP Squared preparation path.
-2. Verify each of the four read-only observation routes on the live board.
-3. Clean up the optional `velvet-ai-core` and receipt-store warnings.
-4. Add a systemd deployment recipe only after repeated foreground boots remain clean.
-5. Connect Interface scenes to the proven observation routes before considering any physical executor.
+1. Auto-load repo-local development state for CLI observation commands.
+2. Install `python-can` during UP Squared preparation.
+3. Configure a receive-only `can0` interface when MCP2515/TJA1050 hardware is attached.
+4. Define and bind the Tiburon vehicle fingerprint before decoded signal testing.
+5. Clean up the optional `velvet-ai-core` and receipt-store warnings.
+6. Add a systemd deployment recipe only after repeated foreground boots remain clean.
+7. Connect Interface scenes to the proven observation routes before considering any physical executor.
