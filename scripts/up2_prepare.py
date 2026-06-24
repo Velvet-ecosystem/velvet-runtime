@@ -95,6 +95,7 @@ def main(argv=None):
 
     python = str(venv / "bin" / "python")
     run([python, "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"])
+    run([python, "-m", "pip", "install", "python-can"])
 
     paths = [root]
     for name in DEPENDENCIES:
