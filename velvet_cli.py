@@ -6,7 +6,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+from pathlib import Path
 
 from services.local_status_client import (
     request_can_observation,
@@ -43,6 +45,22 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _load_repo_development_environment() -> bool:
+    if os.environ.get("VELVET_BODY_REGISTRY_PATH"):
+        return False
+
+    env_path = Path(__file__).resolve().parent / ".velvet-dev" / "env.sh"
+    if not env_path.is_file():
+        return False
+
+    from services.development_start import load_development_environment
+
+    os.environ.update(load_development_environment(env_path))
+    os.environ["VELVET_RUNTIME_MODE"] = "development"
+    os.environ["VELVET_PHYSICAL_AUTHORITY"] = "disabled"
+    return True
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "doctor":
@@ -71,6 +89,9 @@ def main(argv: list[str] | None = None) -> int:
 
         print(json.dumps(build_first_boot_snapshot(args.service), indent=2, sort_keys=True))
         return 0
+
+    _load_repo_development_environment()
+
     try:
         if args.command == "status":
             response = request_local_status(detail=args.detail)
