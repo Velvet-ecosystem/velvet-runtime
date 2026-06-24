@@ -1,0 +1,48 @@
+# SPDX-License-Identifier: GPL-3.0-only
+[Unit]
+Description=Velvet Runtime (read-only UP Squared proof service)
+Documentation=file://@RUNTIME_ROOT@/docs/up2_systemd_install.md
+After=local-fs.target
+Wants=local-fs.target
+ConditionPathIsDirectory=@RUNTIME_ROOT@
+ConditionPathIsExecutable=@RUNTIME_ROOT@/.venv/bin/python
+
+[Service]
+Type=simple
+User=@SERVICE_USER@
+Group=@SERVICE_GROUP@
+WorkingDirectory=@RUNTIME_ROOT@
+Environment=PYTHONUNBUFFERED=1
+Environment=VELVET_RUNTIME_MODE=development
+Environment=VELVET_PHYSICAL_AUTHORITY=disabled
+ExecStart=@RUNTIME_ROOT@/.venv/bin/python @RUNTIME_ROOT@/velvet_cli.py dev-start
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=20s
+KillSignal=SIGTERM
+UMask=0077
+
+# The first installed service remains observation-only. It may use local IPC and
+# receive-only CAN sockets, but it is not permitted to open Internet sockets.
+RestrictAddressFamilies=AF_UNIX AF_CAN
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=@RUNTIME_ROOT@/.velvet-dev /opt/velvet/state
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target
