@@ -45,7 +45,7 @@ Run the installer from the Runtime checkout:
 
 ```bash
 cd /path/to/velvet-runtime
-sudo ./scripts/install_up2_systemd.sh
+sudo bash scripts/install_up2_systemd.sh
 ```
 
 The installer:
@@ -73,7 +73,7 @@ sudo systemctl enable --now velvet-runtime.service
 The installer also supports an explicit one-step start after validation:
 
 ```bash
-sudo ./scripts/install_up2_systemd.sh --enable-now
+sudo bash scripts/install_up2_systemd.sh --enable-now
 ```
 
 ## Validate the live service
@@ -81,7 +81,7 @@ sudo ./scripts/install_up2_systemd.sh --enable-now
 Run:
 
 ```bash
-sudo ./scripts/up2_service_validate.py
+sudo .venv/bin/python scripts/up2_service_validate.py
 ```
 
 The validator checks:
@@ -109,7 +109,7 @@ After the host returns, do not start Velvet manually. Confirm systemd brought it
 ```bash
 systemctl is-enabled velvet-runtime.service
 systemctl is-active velvet-runtime.service
-sudo ./scripts/up2_service_validate.py
+sudo .venv/bin/python scripts/up2_service_validate.py
 ```
 
 Capture the service journal for the current boot:
@@ -146,7 +146,7 @@ Start it again and revalidate:
 
 ```bash
 sudo systemctl start velvet-runtime.service
-sudo ./scripts/up2_service_validate.py
+sudo .venv/bin/python scripts/up2_service_validate.py
 ```
 
 ## Rollback
