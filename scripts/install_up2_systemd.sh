@@ -12,7 +12,7 @@ usage() {
 Install Velvet Runtime as a hardened, read-only systemd service.
 
 Usage:
-  sudo ./scripts/install_up2_systemd.sh [options]
+  sudo bash scripts/install_up2_systemd.sh [options]
 
 Options:
   --runtime-root PATH   Runtime checkout path (default: current checkout)
@@ -106,10 +106,10 @@ if [[ "$ENABLE_NOW" -eq 1 ]]; then
   systemctl enable --now velvet-runtime.service
   systemctl --no-pager --full status velvet-runtime.service
 else
-  cat <<'EOF'
+  cat <<EOF
 [Velvet] Service was not started automatically.
 [Velvet] Review the generated unit, then run:
   sudo systemctl enable --now velvet-runtime.service
-  sudo ./scripts/up2_service_validate.py
+  sudo "$RUNTIME_ROOT/.venv/bin/python" "$RUNTIME_ROOT/scripts/up2_service_validate.py"
 EOF
 fi
