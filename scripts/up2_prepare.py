@@ -18,6 +18,7 @@ import sys
 DEPENDENCIES = (
     "velvet-event-protocol",
     "velvet-continuity-spine",
+    "velvet-receipts",
     "velvet-ai-core",
     "velvet-vehicle-can",
 )
