@@ -6,12 +6,14 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Callable
 
 from services.approved_executor import ExecutorRegistry
 from services.can_observation_executor import register_can_observation
 from services.can_signal_summary_executor import register_can_signal_summary
 from services.execution_receipt_sink import make_execution_receipt_sink
 from services.host_telemetry_executor import register_host_telemetry
+from services.memory_recall_executor import register_memory_recall
 from services.runtime_pipeline import RuntimePipeline
 from services.runtime_status_executor import register_runtime_status
 from services.safety_gate_registry import SafetyGateRegistry
@@ -38,7 +40,12 @@ def resolve_pipeline_paths() -> PipelinePaths:
     )
 
 
-def provision_runtime_pipeline(*, capability_context, paths: PipelinePaths | None = None) -> RuntimePipeline:
+def provision_runtime_pipeline(
+    *,
+    capability_context,
+    paths: PipelinePaths | None = None,
+    recall_provider: Callable[[str, int], Any] | None = None,
+) -> RuntimePipeline:
     resolved = paths or resolve_pipeline_paths()
     signing_key = _read_signing_key(resolved.court_signing_key)
     if not resolved.court_policy.is_file():
@@ -71,6 +78,12 @@ def provision_runtime_pipeline(*, capability_context, paths: PipelinePaths | Non
         executor_registry=executor_registry,
         safety_gate_registry=safety_gate_registry,
     )
+    if recall_provider is not None:
+        register_memory_recall(
+            recall_provider=recall_provider,
+            executor_registry=executor_registry,
+            safety_gate_registry=safety_gate_registry,
+        )
 
     return RuntimePipeline(
         capability_context=capability_context,
