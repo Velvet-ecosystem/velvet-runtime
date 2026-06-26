@@ -8,6 +8,7 @@ import hmac
 import json
 import time
 from dataclasses import asdict, dataclass
+from typing import Dict, Optional
 
 
 @dataclass(frozen=True)
@@ -26,7 +27,7 @@ class CapabilityToken:
     signature: str
 
 
-def issue_token(*, intent, policy_id: str, signing_key: bytes, ttl_seconds: int, now: int | None = None) -> CapabilityToken:
+def issue_token(*, intent, policy_id: str, signing_key: bytes, ttl_seconds: int, now: Optional[int] = None) -> CapabilityToken:
     if not isinstance(signing_key, bytes) or len(signing_key) < 32:
         raise ValueError("Court signing key must contain at least 32 bytes")
     if not isinstance(ttl_seconds, int) or not 1 <= ttl_seconds <= 300:
@@ -51,7 +52,7 @@ def issue_token(*, intent, policy_id: str, signing_key: bytes, ttl_seconds: int,
     return CapabilityToken(signature=signature, **signed)
 
 
-def verify_token(token: CapabilityToken, *, signing_key: bytes, now: int | None = None) -> bool:
+def verify_token(token: CapabilityToken, *, signing_key: bytes, now: Optional[int] = None) -> bool:
     payload = asdict(token)
     signature = payload.pop("signature")
     expected = hmac.new(signing_key, _canonical(payload), hashlib.sha256).hexdigest()
@@ -62,5 +63,5 @@ def verify_token(token: CapabilityToken, *, signing_key: bytes, now: int | None 
     )
 
 
-def _canonical(value: dict) -> bytes:
+def _canonical(value: Dict[str, object]) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
