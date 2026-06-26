@@ -4,10 +4,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Dict, Union
 
 
-def make_execution_receipt_sink(filepath: str | Path) -> Callable[[dict[str, Any]], Any]:
+def make_execution_receipt_sink(filepath: Union[str, Path]) -> Callable[[Dict[str, Any]], Any]:
     try:
         from receipt_logger import ReceiptLogger
         from runtime_receipts import runtime_receipt_from_envelope
@@ -19,7 +19,7 @@ def make_execution_receipt_sink(filepath: str | Path) -> Callable[[dict[str, Any
 
     logger = ReceiptLogger(filepath=str(filepath))
 
-    def sink(envelope: dict[str, Any]) -> Any:
+    def sink(envelope: Dict[str, Any]) -> Any:
         payload = envelope.get("payload", {})
         output = payload.get("output") if isinstance(payload, dict) else None
         if (
