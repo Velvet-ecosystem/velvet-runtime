@@ -6,7 +6,7 @@ from __future__ import annotations
 import time
 import uuid
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Dict, Optional, Tuple
 
 from services.continuity_activation import (
     continuity_boot_passed,
@@ -22,8 +22,8 @@ from services.pipeline_provisioning import provision_runtime_pipeline
 class LocalStatusResponse:
     ok: bool
     state: str
-    output: dict[str, Any] | None
-    errors: tuple[str, ...]
+    output: Optional[Dict[str, Any]]
+    errors: Tuple[str, ...]
 
 
 def build_verified_status_gateway():
@@ -51,8 +51,8 @@ def request_local_status(
     *,
     detail: str = "summary",
     gateway=None,
-    intent_id: str | None = None,
-    now: int | None = None,
+    intent_id: Optional[str] = None,
+    now: Optional[int] = None,
 ) -> LocalStatusResponse:
     _validate_detail(detail)
     return _request_observation(
@@ -69,8 +69,8 @@ def request_host_telemetry(
     *,
     detail: str = "summary",
     gateway=None,
-    intent_id: str | None = None,
-    now: int | None = None,
+    intent_id: Optional[str] = None,
+    now: Optional[int] = None,
 ) -> LocalStatusResponse:
     _validate_detail(detail)
     return _request_observation(
@@ -87,8 +87,8 @@ def request_can_observation(
     *,
     max_frames: int = 10,
     gateway=None,
-    intent_id: str | None = None,
-    now: int | None = None,
+    intent_id: Optional[str] = None,
+    now: Optional[int] = None,
 ) -> LocalStatusResponse:
     _validate_int_range("max_frames", max_frames, 1, 100)
     return _request_observation(
@@ -107,8 +107,8 @@ def request_can_signal_summary(
     minimum_confidence: float = 0.5,
     max_signals: int = 16,
     gateway=None,
-    intent_id: str | None = None,
-    now: int | None = None,
+    intent_id: Optional[str] = None,
+    now: Optional[int] = None,
 ) -> LocalStatusResponse:
     _validate_int_range("max_frames", max_frames, 1, 100)
     if isinstance(minimum_confidence, bool) or not isinstance(minimum_confidence, (int, float)):
@@ -146,10 +146,10 @@ def _request_observation(
     *,
     route_id: str,
     prefix: str,
-    parameters: dict[str, Any],
+    parameters: Dict[str, Any],
     gateway,
-    intent_id: str | None,
-    now: int | None,
+    intent_id: Optional[str],
+    now: Optional[int],
 ) -> LocalStatusResponse:
     active_gateway = gateway or build_verified_status_gateway()
     requested_at = int(now if now is not None else time.time())
