@@ -6,7 +6,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 from services.approved_executor import ExecutorRegistry
 from services.can_observation_executor import register_can_observation
@@ -43,8 +43,8 @@ def resolve_pipeline_paths() -> PipelinePaths:
 def provision_runtime_pipeline(
     *,
     capability_context,
-    paths: PipelinePaths | None = None,
-    recall_provider: Callable[[str, int], Any] | None = None,
+    paths: Optional[PipelinePaths] = None,
+    recall_provider: Optional[Callable[[str, int], Any]] = None,
 ) -> RuntimePipeline:
     resolved = paths or resolve_pipeline_paths()
     signing_key = _read_signing_key(resolved.court_signing_key)
