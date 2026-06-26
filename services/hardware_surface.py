@@ -13,16 +13,16 @@ import json
 import platform
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Mapping
+from typing import Callable, Dict, Mapping, Optional, Tuple
 
 
-Reader = Callable[[Path], str | None]
+Reader = Callable[[Path], Optional[str]]
 
 
 @dataclass(frozen=True)
 class SurfaceIdentity:
     collector: str
-    facts: dict[str, str]
+    facts: Dict[str, str]
     fingerprint: str
 
 
@@ -50,14 +50,10 @@ _MACHINE_ID_PATHS = (
 def collect_surface_identity(
     *,
     surface_label: str,
-    reader: Reader | None = None,
-    architecture: str | None = None,
+    reader: Optional[Reader] = None,
+    architecture: Optional[str] = None,
 ) -> SurfaceIdentity:
-    """Collect normalized local facts and derive a stable fingerprint.
-
-    The supplied label distinguishes installations that intentionally share
-    identical hardware. It is one input, not the sole identity anchor.
-    """
+    """Collect normalized local facts and derive a stable fingerprint."""
 
     label = _normalize(surface_label)
     if not label:
@@ -66,7 +62,7 @@ def collect_surface_identity(
     read = reader or _read_text
     arch = _normalize(architecture or platform.machine()) or "unknown"
 
-    facts: dict[str, str] = {
+    facts = {
         "schema": "velvet.surface.v1",
         "surface_label": label,
         "architecture": arch,
@@ -117,8 +113,8 @@ def fingerprint_surface_facts(facts: Mapping[str, str]) -> str:
     return f"v1:{digest}"
 
 
-def _collect_paths(paths: Mapping[str, Path], reader: Reader) -> dict[str, str]:
-    values: dict[str, str] = {}
+def _collect_paths(paths: Mapping[str, Path], reader: Reader) -> Dict[str, str]:
+    values = {}
     for name, path in paths.items():
         value = reader(path)
         normalized = _normalize(value or "")
@@ -127,7 +123,7 @@ def _collect_paths(paths: Mapping[str, Path], reader: Reader) -> dict[str, str]:
     return values
 
 
-def _first_value(paths: tuple[Path, ...], reader: Reader) -> str | None:
+def _first_value(paths: Tuple[Path, ...], reader: Reader) -> Optional[str]:
     for path in paths:
         value = _normalize(reader(path) or "")
         if value:
@@ -153,7 +149,7 @@ def _classify_arm(facts: Mapping[str, str]) -> str:
     return "device-tree-linux"
 
 
-def _read_text(path: Path) -> str | None:
+def _read_text(path: Path) -> Optional[str]:
     try:
         return path.read_text(encoding="utf-8", errors="ignore")
     except (FileNotFoundError, PermissionError, OSError):
