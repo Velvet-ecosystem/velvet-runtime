@@ -22,14 +22,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="velvet", description="Local Velvet Runtime command line")
     subcommands = parser.add_subparsers(dest="command", required=True)
     subcommands.add_parser("doctor", help="inspect local startup readiness without changing state")
-    subcommands.add_parser(
-        "dev-bootstrap",
-        help="create repo-local read-only development state",
-    )
-    subcommands.add_parser(
-        "dev-start",
-        help="load repo-local development state, run doctor, and start the normal Runtime",
-    )
+    subcommands.add_parser("dev-bootstrap", help="create repo-local read-only development state")
+    subcommands.add_parser("dev-start", help="load repo-local development state, run doctor, and start the normal Runtime")
+    subcommands.add_parser("gateway-proof", help="prove one receipted read-only request through the local gateway")
     snapshot = subcommands.add_parser("boot-snapshot", help="capture a bounded first-boot status report")
     snapshot.add_argument("--service", default="velvet-runtime.service")
     status = subcommands.add_parser("status", help="request receipted read-only Runtime status")
@@ -48,13 +43,10 @@ def build_parser() -> argparse.ArgumentParser:
 def _load_repo_development_environment() -> bool:
     if os.environ.get("VELVET_BODY_REGISTRY_PATH"):
         return False
-
     env_path = Path(__file__).resolve().parent / ".velvet-dev" / "env.sh"
     if not env_path.is_file():
         return False
-
     from services.development_start import load_development_environment
-
     os.environ.update(load_development_environment(env_path))
     os.environ["VELVET_RUNTIME_MODE"] = "development"
     os.environ["VELVET_PHYSICAL_AUTHORITY"] = "disabled"
@@ -65,17 +57,14 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "doctor":
         from services.startup_doctor import run_runtime_preflight
-
         report = run_runtime_preflight()
         print(json.dumps(report.to_dict(), indent=2, sort_keys=True), file=sys.stdout if report.ready else sys.stderr)
         return 0 if report.ready else 2
     if args.command == "dev-bootstrap":
         from scripts.bootstrap_dev_state import main as bootstrap_dev_state
-
         return bootstrap_dev_state()
     if args.command == "dev-start":
         from services.development_start import start_development_runtime
-
         try:
             result = start_development_runtime()
         except Exception as exc:
@@ -86,11 +75,19 @@ def main(argv: list[str] | None = None) -> int:
         return result
     if args.command == "boot-snapshot":
         from services.first_boot_snapshot import build_first_boot_snapshot
-
         print(json.dumps(build_first_boot_snapshot(args.service), indent=2, sort_keys=True))
         return 0
 
     _load_repo_development_environment()
+
+    if args.command == "gateway-proof":
+        from services.gateway_proof import run_gateway_proof
+        try:
+            document = run_gateway_proof()
+        except Exception as exc:
+            document = {"ok": False, "state": "proof_error", "errors": [str(exc)]}
+        print(json.dumps(document, indent=2, sort_keys=True), file=sys.stdout if document.get("ok") else sys.stderr)
+        return 0 if document.get("ok") else 2
 
     try:
         if args.command == "status":
