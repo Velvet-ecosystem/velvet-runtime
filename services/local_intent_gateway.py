@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, Optional, Tuple
 
 from services.court_intent import Intent, normalize
 from services.request_origin import RequestOrigin, local_origin
@@ -18,7 +18,7 @@ class IntentRoute:
     capability: str
     target: str
     executor_name: str
-    allowed_parameters: tuple[str, ...]
+    allowed_parameters: Tuple[str, ...]
 
 
 class LocalIntentGateway:
@@ -27,15 +27,15 @@ class LocalIntentGateway:
         *,
         pipeline,
         identity_context,
-        routes: tuple[IntentRoute, ...],
-        origin_observer: Callable[[RequestOrigin], None] | None = None,
+        routes: Tuple[IntentRoute, ...],
+        origin_observer: Optional[Callable[[RequestOrigin], None]] = None,
     ):
         self._pipeline = pipeline
         self._identity = identity_context
         self._routes = self._build_routes(routes)
         self._origin_observer = origin_observer
 
-    def submit(self, request: Mapping[str, Any], *, now: int | None = None):
+    def submit(self, request: Mapping[str, Any], *, now: Optional[int] = None):
         received_at = int(now if now is not None else time.time())
         origin = local_origin(
             peer_id="runtime-in-process",
@@ -49,7 +49,7 @@ class LocalIntentGateway:
         request: Mapping[str, Any],
         *,
         origin: RequestOrigin,
-        now: int | None = None,
+        now: Optional[int] = None,
     ):
         if not isinstance(origin, RequestOrigin):
             raise TypeError("origin must be RequestOrigin")
