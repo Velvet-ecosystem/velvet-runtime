@@ -9,14 +9,14 @@ and persistence of an execution-start receipt.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Mapping, MutableSet, Protocol, runtime_checkable
+from typing import Any, Callable, Dict, Mapping, MutableSet, Optional, Protocol, Tuple, Union, runtime_checkable
 
 from services.court_token import CapabilityToken, verify_token
 
 
 Executor = Callable[[Mapping[str, Any]], Mapping[str, Any]]
-SafetyCheck = Callable[[CapabilityToken, Mapping[str, Any]], tuple[bool, str]]
-ReceiptSink = Callable[[dict[str, Any]], Any]
+SafetyCheck = Callable[[CapabilityToken, Mapping[str, Any]], Tuple[bool, str]]
+ReceiptSink = Callable[[Dict[str, Any]], Any]
 
 
 @runtime_checkable
@@ -29,7 +29,7 @@ class AtomicReplayLedger(Protocol):
 class ExecutorSpec:
     name: str
     capability: str
-    targets: tuple[str, ...]
+    targets: Tuple[str, ...]
     handler: Executor
 
 
@@ -39,15 +39,15 @@ class ExecutionResult:
     state: str
     executor_name: str
     token_id: str
-    output: Mapping[str, Any] | None
+    output: Optional[Mapping[str, Any]]
     start_receipt_persisted: bool
     final_receipt_persisted: bool
-    errors: tuple[str, ...] = ()
+    errors: Tuple[str, ...] = ()
 
 
 class ExecutorRegistry:
     def __init__(self) -> None:
-        self._executors: dict[str, ExecutorSpec] = {}
+        self._executors: Dict[str, ExecutorSpec] = {}
 
     def register(self, spec: ExecutorSpec) -> None:
         name = _normalized(spec.name)
@@ -68,7 +68,7 @@ class ExecutorRegistry:
         except KeyError as exc:
             raise KeyError(f"executor {normalized!r} is not registered") from exc
 
-    def names(self) -> tuple[str, ...]:
+    def names(self) -> Tuple[str, ...]:
         return tuple(sorted(self._executors))
 
     def count(self) -> int:
@@ -88,8 +88,8 @@ def execute_authorized(
     signing_key: bytes,
     safety_check: SafetyCheck,
     receipt_sink: ReceiptSink,
-    used_token_ids: MutableSet[str] | AtomicReplayLedger,
-    now: int | None = None,
+    used_token_ids: Union[MutableSet[str], AtomicReplayLedger],
+    now: Optional[int] = None,
 ) -> ExecutionResult:
     """Execute one registered handler after every required gate passes."""
 
@@ -231,7 +231,7 @@ def _receipt(event_type, state, executor_name, token, *, output, errors, actuati
     }
 
 
-def _persist(receipt: dict[str, Any], sink: ReceiptSink) -> bool:
+def _persist(receipt: Dict[str, Any], sink: ReceiptSink) -> bool:
     try:
         sink(receipt)
     except Exception:
