@@ -10,6 +10,8 @@ from typing import Any, Dict, Iterable, List
 @dataclass(frozen=True)
 class MemoryRecallView:
     event_id: str
+    memory_kind: str
+    authority_status: str
     score: float
     association: float
     confidence: float
@@ -19,6 +21,8 @@ class MemoryRecallView:
     def to_dict(self) -> Dict[str, Any]:
         return {
             "event_id": self.event_id,
+            "memory_kind": self.memory_kind,
+            "authority_status": self.authority_status,
             "score": self.score,
             "association": self.association,
             "confidence": self.confidence,
@@ -34,9 +38,12 @@ class MemoryRecallAdapter:
         projected = []
         for result in results:
             score = result.score
+            record = result.record
             projected.append(
                 MemoryRecallView(
                     event_id=score.event_id,
+                    memory_kind=str(record.get("kind", "unknown")),
+                    authority_status=str(record.get("authority_status", "unknown")),
                     score=float(score.score),
                     association=float(score.association),
                     confidence=float(score.confidence),
