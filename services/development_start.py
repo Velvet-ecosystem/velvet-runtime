@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Dict, Optional, Union
 
 _ALLOWED_ENV = {
     "VELVET_CONTINUITY_IDENTITY_PATH",
@@ -23,12 +23,12 @@ _ALLOWED_ENV = {
 }
 
 
-def load_development_environment(env_path: str | Path) -> dict[str, str]:
+def load_development_environment(env_path: Union[str, Path]) -> Dict[str, str]:
     path = Path(env_path).expanduser().resolve()
     if not path.is_file():
         raise FileNotFoundError(f"development environment not found: {path}")
 
-    values: dict[str, str] = {}
+    values = {}
     for line_number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         line = raw.strip()
         if not line or line.startswith("#"):
@@ -54,9 +54,9 @@ def load_development_environment(env_path: str | Path) -> dict[str, str]:
 
 def start_development_runtime(
     *,
-    env_path: str | Path = ".velvet-dev/env.sh",
-    preflight: Callable[[], object] | None = None,
-    runtime_entrypoint: Callable[[], object] | None = None,
+    env_path: Union[str, Path] = ".velvet-dev/env.sh",
+    preflight: Optional[Callable[[], object]] = None,
+    runtime_entrypoint: Optional[Callable[[], object]] = None,
 ) -> int:
     values = load_development_environment(env_path)
     os.environ.update(values)
@@ -65,7 +65,6 @@ def start_development_runtime(
 
     if preflight is None:
         from services.startup_doctor import run_runtime_preflight
-
         preflight = run_runtime_preflight
     report = preflight()
     if not getattr(report, "ready", False):
@@ -73,7 +72,6 @@ def start_development_runtime(
 
     if runtime_entrypoint is None:
         from main import main as runtime_main
-
         runtime_entrypoint = runtime_main
     runtime_entrypoint()
     return 0
