@@ -3,10 +3,12 @@
 
 from __future__ import annotations
 
-import importlib.util
 import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Tuple
+
+from services.compatibility_report import build_compatibility_report
 
 ROOT = Path("/opt/velvet/state")
 
@@ -23,7 +25,7 @@ class PreflightCheck:
 class RuntimePreflightReport:
     ready: bool
     state: str
-    checks: tuple[PreflightCheck, ...]
+    checks: Tuple[PreflightCheck, ...]
 
     def to_dict(self) -> dict:
         return {
@@ -37,24 +39,29 @@ def _path(name: str, default: str) -> Path:
     return Path(os.environ.get(name, str(ROOT / default)))
 
 
-def _import_check(name: str, required: bool) -> PreflightCheck:
-    try:
-        found = importlib.util.find_spec(name) is not None
-        detail = "available" if found else "not installed"
-    except (ImportError, AttributeError, ValueError) as exc:
-        found = False
-        detail = f"import probe failed: {exc}"
-    return PreflightCheck(f"import:{name}", found, required, detail)
+def _compatibility_checks() -> list:
+    report = build_compatibility_report()
+    checks = []
+    for component in report["components"]:
+        checks.append(
+            PreflightCheck(
+                "component:{}".format(component["component"]),
+                bool(component["available"]),
+                bool(component["required"]),
+                component["detail"],
+            )
+        )
+    return checks
 
 
 def _file_check(name: str, path: Path, minimum: int = 1) -> PreflightCheck:
     if not path.is_file():
-        return PreflightCheck(name, False, True, f"missing: {path}")
+        return PreflightCheck(name, False, True, "missing: {}".format(path))
     size = path.stat().st_size
     if size < minimum:
-        detail = f"too small: {path} ({size} bytes; need {minimum})"
+        detail = "too small: {} ({} bytes; need {})".format(path, size, minimum)
         return PreflightCheck(name, False, True, detail)
-    return PreflightCheck(name, True, True, f"present: {path} ({size} bytes)")
+    return PreflightCheck(name, True, True, "present: {} ({} bytes)".format(path, size))
 
 
 def _parent_check(name: str, path: Path) -> PreflightCheck:
@@ -63,9 +70,9 @@ def _parent_check(name: str, path: Path) -> PreflightCheck:
         current = current.parent
     ok = current.exists() and os.access(current, os.W_OK | os.X_OK)
     detail = (
-        f"writable ancestor: {current}"
+        "writable ancestor: {}".format(current)
         if ok
-        else f"no writable ancestor for: {path.parent}"
+        else "no writable ancestor for: {}".format(path.parent)
     )
     return PreflightCheck(name, ok, True, detail)
 
@@ -88,10 +95,7 @@ def run_runtime_preflight() -> RuntimePreflightReport:
         "replay_ledger_parent": _path("VELVET_TOKEN_REPLAY_LEDGER_PATH", "execution/consumed_tokens.jsonl"),
     }
 
-    checks = [
-        _import_check("velvet_event_protocol", True),
-        _import_check("velvet_ai_core", False),
-    ]
+    checks = _compatibility_checks()
     for name, path in inputs.items():
         minimum = 32 if name == "court_signing_key" else 1
         checks.append(_file_check(name, path, minimum))
