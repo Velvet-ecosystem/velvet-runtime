@@ -7,7 +7,7 @@
       "baseline": {
         "minimum": "3.8",
         "maximum_exclusive": "3.13",
-        "purpose": "safe bootstrap, dependency doctor, snapshots, read-only Runtime, and minimal Interface"
+        "purpose": "safe bootstrap, dependency doctor, snapshots, read-only Runtime, and headless operation"
       },
       "preferred": {
         "minimum": "3.10",
@@ -30,6 +30,8 @@
   ],
   "interface": {
     "enabled": true,
+    "required_for_baseline": false,
+    "required_for_preferred": true,
     "python_imports": [
       "PyQt5",
       "velvet_interface"
