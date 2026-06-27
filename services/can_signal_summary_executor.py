@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Callable, Mapping, Optional
+from typing import Any, Callable, Dict, Mapping, Optional
 
 from services.approved_executor import ExecutorRegistry, ExecutorSpec
 from services.executor_manifest import ExecutorManifest, load_executor_manifest, validate_parameters
@@ -31,27 +31,9 @@ CAN_SIGNAL_SUMMARY_MANIFEST = {
     "safety_gate": "can-signals-read-only-gate",
     "read_only": True,
     "parameters": [
-        {
-            "name": "max_frames",
-            "type": "integer",
-            "required": False,
-            "minimum": 1,
-            "maximum": 100,
-        },
-        {
-            "name": "minimum_confidence",
-            "type": "number",
-            "required": False,
-            "minimum": 0.0,
-            "maximum": 1.0,
-        },
-        {
-            "name": "max_signals",
-            "type": "integer",
-            "required": False,
-            "minimum": 1,
-            "maximum": 32,
-        },
+        {"name": "max_frames", "type": "integer", "required": False, "minimum": 1, "maximum": 100},
+        {"name": "minimum_confidence", "type": "number", "required": False, "minimum": 0.0, "maximum": 1.0},
+        {"name": "max_signals", "type": "integer", "required": False, "minimum": 1, "maximum": 32},
     ],
 }
 
@@ -64,14 +46,12 @@ def register_can_signal_summary(
     profile_loader: Optional[Callable[[], Any]] = None,
 ) -> ExecutorManifest:
     manifest = load_executor_manifest(CAN_SIGNAL_SUMMARY_MANIFEST)
-
     safety_gate_registry.register(SafetyGateSpec(
         name=manifest.safety_gate,
         capability=manifest.capability,
         targets=manifest.targets,
         check=lambda token, parameters: (True, "read-only decoded CAN observations"),
     ))
-
     make_observer = observer_factory or _default_observer_factory
     load_profile = profile_loader or _default_profile_loader
 
@@ -80,17 +60,14 @@ def register_can_signal_summary(
         max_frames = validated.get("max_frames", 32)
         minimum_confidence = validated.get("minimum_confidence", 0.5)
         max_signals = validated.get("max_signals", 16)
-
         try:
             from velvet_vehicle_can import decode_signal_map, summarize_decoded_signals
         except ImportError as exc:
             raise RuntimeError("velvet-vehicle-can decoded signal support is required") from exc
-
         profile = load_profile()
         signal_map = getattr(profile, "signal_map", None)
         if signal_map is None:
             raise RuntimeError("vehicle profile does not provide a signal_map")
-
         observer = make_observer()
         frames = []
         try:
@@ -103,13 +80,7 @@ def register_can_signal_summary(
             shutdown = getattr(observer, "shutdown", None)
             if callable(shutdown):
                 shutdown()
-
-        decoded = decode_signal_map(
-            frames,
-            signal_map,
-            minimum_confidence=minimum_confidence,
-            max_signals=max_signals,
-        )
+        decoded = decode_signal_map(frames, signal_map, minimum_confidence=minimum_confidence, max_signals=max_signals)
         raw_summary = summarize_decoded_signals(decoded)
         return _bounded_summary_output(raw_summary, frame_count=len(frames))
 
@@ -122,14 +93,12 @@ def register_can_signal_summary(
     return manifest
 
 
-def _bounded_summary_output(raw: Any, *, frame_count: int) -> dict[str, Any]:
+def _bounded_summary_output(raw: Any, *, frame_count: int) -> Dict[str, Any]:
     if not isinstance(raw, Mapping):
         raise RuntimeError("decoded CAN summary output must be a mapping")
-
     signals = raw.get("signals", [])
     if not isinstance(signals, list):
         raise RuntimeError("decoded CAN summary signals must be a list")
-
     bounded = []
     for item in signals:
         if not isinstance(item, Mapping):
@@ -140,7 +109,6 @@ def _bounded_summary_output(raw: Any, *, frame_count: int) -> dict[str, Any]:
         copied["actuation_granted"] = False
         copied["actuation_performed"] = False
         bounded.append(copied)
-
     return {
         "mode": "read-only",
         "status": "observation-only",
@@ -157,11 +125,9 @@ def _default_profile_loader():
         from velvet_vehicle_can import VehicleProfileStore
     except ImportError as exc:
         raise RuntimeError("velvet-vehicle-can profile support is required") from exc
-
     fingerprint = os.environ.get("VELVET_VEHICLE_FINGERPRINT")
     if not fingerprint:
         raise RuntimeError("VELVET_VEHICLE_FINGERPRINT is required for decoded CAN signals")
-
     root = Path(os.environ.get("VELVET_VEHICLE_PROFILE_ROOT", "/opt/velvet/state/vehicle/profiles"))
     profile = VehicleProfileStore(str(root)).load(fingerprint)
     if profile is None:
@@ -171,14 +137,9 @@ def _default_profile_loader():
 
 def _default_observer_factory():
     try:
-        from velvet_vehicle_can import (
-            ListenOnlyCanConfig,
-            ListenOnlyPythonCanReader,
-            ReceiveOnlyCanObserver,
-        )
+        from velvet_vehicle_can import ListenOnlyCanConfig, ListenOnlyPythonCanReader, ReceiveOnlyCanObserver
     except ImportError as exc:
         raise RuntimeError("velvet-vehicle-can receive-only observer support is required") from exc
-
     channel = os.environ.get("VELVET_CAN_CHANNEL", "can0")
     reader = ListenOnlyPythonCanReader(ListenOnlyCanConfig(channel=channel))
     observer = ReceiveOnlyCanObserver(reader.read_frame)
