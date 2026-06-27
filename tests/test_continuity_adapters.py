@@ -11,6 +11,7 @@ import types
 import unittest
 from contextlib import contextmanager
 from dataclasses import dataclass
+from typing import Optional, Tuple
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -26,9 +27,9 @@ class FakeProofIdentityRecord:
     model_fingerprint: str
     surface_fingerprint: str
     lineage_root: str
-    active_context_hashes: tuple[str, ...]
+    active_context_hashes: Tuple[str, ...]
     authority_level: int
-    previous_hash: str | None
+    previous_hash: Optional[str]
     integrity_tag: str
     version: int = 1
 
