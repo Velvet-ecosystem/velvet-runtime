@@ -66,8 +66,19 @@ def verify(manifest: Dict[str, Any]) -> Dict[str, Any]:
 
     baseline_supported = _version_supported(current, baseline)
     preferred_supported = _version_supported(current, preferred)
-    baseline_ready = baseline_supported and not missing_required and not missing_interface
-    preferred_ready = preferred_supported and baseline_ready
+    interface_required_for_baseline = interface.get("required_for_baseline") is True
+    interface_required_for_preferred = interface.get("required_for_preferred") is True
+
+    baseline_ready = bool(
+        baseline_supported
+        and not missing_required
+        and (not interface_required_for_baseline or not missing_interface)
+    )
+    preferred_ready = bool(
+        preferred_supported
+        and baseline_ready
+        and (not interface_required_for_preferred or not missing_interface)
+    )
 
     if preferred_ready:
         capability_tier = "preferred"
@@ -84,6 +95,7 @@ def verify(manifest: Dict[str, Any]) -> Dict[str, Any]:
         "baseline_ready": baseline_ready,
         "preferred_ready": preferred_ready,
         "capability_tier": capability_tier,
+        "headless_ready": baseline_ready and bool(missing_interface),
         "python": {
             "current": ".".join(str(part) for part in current),
             "baseline": {
@@ -101,6 +113,8 @@ def verify(manifest: Dict[str, Any]) -> Dict[str, Any]:
         "required_imports": import_results,
         "optional_imports": optional_results,
         "interface_imports": interface_results,
+        "interface_required_for_baseline": interface_required_for_baseline,
+        "interface_required_for_preferred": interface_required_for_preferred,
         "missing_required": missing_required,
         "missing_interface": missing_interface,
         "unavailable_optional": unavailable_optional,
