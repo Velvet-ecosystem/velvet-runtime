@@ -8,6 +8,7 @@ import unittest
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
+from typing import Optional, Tuple
 from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -23,9 +24,9 @@ class FakeIdentity:
     model_fingerprint: str = "velvet-runtime-development"
     surface_fingerprint: str = "v1:development"
     lineage_root: str = "development"
-    active_context_hashes: tuple[str, ...] = ("development-read-only",)
+    active_context_hashes: Tuple[str, ...] = ("development-read-only",)
     authority_level: int = 1
-    previous_hash: str | None = None
+    previous_hash: Optional[str] = None
     integrity_tag: str = "development-tag"
     version: int = 1
 
@@ -37,16 +38,14 @@ class DevStateBootstrapTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            with (
-                patch.object(bootstrap, "ROOT", root),
-                patch.object(bootstrap, "DEV_ROOT", root / ".velvet-dev/state"),
-                patch.object(
-                    bootstrap,
-                    "collect_surface_identity",
-                    return_value=SimpleNamespace(fingerprint="v1:development"),
-                ),
-                patch.dict(sys.modules, {"velvet_continuity": fake_module}),
-            ):
+            with patch.object(bootstrap, "ROOT", root), \
+                    patch.object(bootstrap, "DEV_ROOT", root / ".velvet-dev/state"), \
+                    patch.object(
+                        bootstrap,
+                        "collect_surface_identity",
+                        return_value=SimpleNamespace(fingerprint="v1:development"),
+                    ), \
+                    patch.dict(sys.modules, {"velvet_continuity": fake_module}):
                 self.assertEqual(bootstrap.main(), 0)
 
             state = root / ".velvet-dev/state"
