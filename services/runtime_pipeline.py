@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Optional, Union
 
 from services.approved_executor import ExecutionResult, ExecutorRegistry, execute_authorized
 from services.contracts import ReceiptSink, ReplayLedger, SafetyCheck
@@ -18,7 +18,7 @@ class PipelineResult:
     executed: bool
     state: str
     court: CourtDecision
-    execution: ExecutionResult | None
+    execution: Optional[ExecutionResult]
 
 
 class RuntimePipeline:
@@ -26,7 +26,7 @@ class RuntimePipeline:
         self,
         *,
         capability_context: Any,
-        court_policy_path: str | Path,
+        court_policy_path: Union[str, Path],
         signing_key: bytes,
         executor_registry: ExecutorRegistry,
         safety_check: SafetyCheck,
@@ -47,7 +47,7 @@ class RuntimePipeline:
         intent: Intent,
         executor_name: str,
         parameters: Mapping[str, Any],
-        now: int | None = None,
+        now: Optional[int] = None,
     ) -> PipelineResult:
         court = authorize_intent(
             intent=intent,

@@ -8,7 +8,7 @@ import os
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Optional, Union
 
 
 @dataclass(frozen=True)
@@ -25,21 +25,16 @@ class RecoveryReport:
 
 def enter_recovery_mode(
     *,
-    report_path: str | Path,
+    report_path: Union[str, Path],
     reason: str,
     continuity_state: str = "unavailable",
     verified: bool = False,
     receipt_persisted: bool = False,
     authority_level: int = 0,
-    should_stop: Callable[[], bool] | None = None,
+    should_stop: Optional[Callable[[], bool]] = None,
     sleep_interval: float = 1.0,
 ) -> RecoveryReport:
-    """Persist a local diagnostic report and remain in a locked idle state.
-
-    Recovery mode does not load modules, publish events, expose a shell, grant
-    authority, or enable actuation. The process remains alive so local service
-    supervision and diagnostics can observe the failure state.
-    """
+    """Persist a local diagnostic report and remain in a locked idle state."""
 
     report = RecoveryReport(
         reason=reason,

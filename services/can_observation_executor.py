@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Callable, Mapping, Optional
+from typing import Any, Callable, Dict, Mapping, Optional
 
 from services.approved_executor import ExecutorRegistry, ExecutorSpec
 from services.executor_manifest import ExecutorManifest, load_executor_manifest, validate_parameters
@@ -90,14 +90,8 @@ def register_can_observation(
     return manifest
 
 
-def _bounded_frame_output(frame: Any) -> dict[str, Any]:
-    """Return a copied mapping with Runtime-owned safety declarations.
-
-    The vehicle-CAN package is a trusted dependency, but Runtime must not
-    publish arbitrary objects or accept dependency-supplied claims about
-    actuation state. Frame output therefore has to be a mapping, is copied
-    before publication, and receives Runtime-owned read-only markers.
-    """
+def _bounded_frame_output(frame: Any) -> Dict[str, Any]:
+    """Return a copied mapping with Runtime-owned safety declarations."""
 
     to_dict = getattr(frame, "to_dict", None)
     if not callable(to_dict):

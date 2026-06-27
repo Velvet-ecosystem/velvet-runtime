@@ -12,10 +12,9 @@ verification may succeed locally, but persistence is reported as absent.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Dict, Optional, Sequence, Tuple
 
-
-ReceiptSink = Callable[[dict[str, Any]], Any]
+ReceiptSink = Callable[[Dict[str, Any]], Any]
 
 
 @dataclass(frozen=True)
@@ -26,9 +25,9 @@ class BootContinuityResult:
     boot_allowed: bool
     state: str
     authority_level: int
-    receipt_payload: dict[str, Any]
+    receipt_payload: Dict[str, Any]
     receipt_persisted: bool
-    errors: tuple[str, ...] = ()
+    errors: Tuple[str, ...] = ()
 
 
 def verify_boot_continuity(
@@ -36,17 +35,9 @@ def verify_boot_continuity(
     identity_chain: Sequence[Any],
     local_key: bytes,
     active_surface_fingerprint: str,
-    receipt_sink: ReceiptSink | None = None,
+    receipt_sink: Optional[ReceiptSink] = None,
 ) -> BootContinuityResult:
-    """Verify identity continuity and prepare the boot receipt.
-
-    Rules:
-    - Invalid proof or lineage denies boot.
-    - A surface mismatch enters recovery and denies normal boot.
-    - Authority level zero is recovery-only and denies normal boot.
-    - Missing receipt persistence never masquerades as a persisted receipt.
-    - This function does not actuate, authorize, or expose runtime internals.
-    """
+    """Verify identity continuity and prepare the boot receipt."""
 
     try:
         from velvet_continuity import ContinuityReceiptBridge, verify_lineage_chain
@@ -99,15 +90,7 @@ def verify_boot_continuity(
             },
         )
         persisted, sink_errors = _persist(payload, receipt_sink)
-        return BootContinuityResult(
-            verified=True,
-            boot_allowed=False,
-            state="surface_mismatch",
-            authority_level=0,
-            receipt_payload=payload,
-            receipt_persisted=persisted,
-            errors=sink_errors,
-        )
+        return BootContinuityResult(True, False, "surface_mismatch", 0, payload, persisted, sink_errors)
 
     if authority_level <= 0:
         payload = ContinuityReceiptBridge(source="velvet-runtime").format_event(
@@ -121,15 +104,7 @@ def verify_boot_continuity(
             },
         )
         persisted, sink_errors = _persist(payload, receipt_sink)
-        return BootContinuityResult(
-            verified=True,
-            boot_allowed=False,
-            state="recovery_only",
-            authority_level=0,
-            receipt_payload=payload,
-            receipt_persisted=persisted,
-            errors=sink_errors,
-        )
+        return BootContinuityResult(True, False, "recovery_only", 0, payload, persisted, sink_errors)
 
     payload = ContinuityReceiptBridge(source="velvet-runtime").format_event(
         event_type="BOOT_CONTINUITY_VERIFIED",
@@ -143,23 +118,22 @@ def verify_boot_continuity(
         },
     )
     persisted, sink_errors = _persist(payload, receipt_sink)
-
     return BootContinuityResult(
-        verified=True,
-        boot_allowed=True,
-        state="verified" if persisted else "verified_unpersisted",
-        authority_level=authority_level,
-        receipt_payload=payload,
-        receipt_persisted=persisted,
-        errors=sink_errors,
+        True,
+        True,
+        "verified" if persisted else "verified_unpersisted",
+        authority_level,
+        payload,
+        persisted,
+        sink_errors,
     )
 
 
 def _failure_result(
     *,
     state: str,
-    errors: tuple[str, ...],
-    receipt_sink: ReceiptSink | None,
+    errors: Tuple[str, ...],
+    receipt_sink: Optional[ReceiptSink],
 ) -> BootContinuityResult:
     payload = {
         "event_type": "BOOT_CONTINUITY_DENIED",
@@ -173,21 +147,13 @@ def _failure_result(
         },
     }
     persisted, sink_errors = _persist(payload, receipt_sink)
-    return BootContinuityResult(
-        verified=False,
-        boot_allowed=False,
-        state=state,
-        authority_level=0,
-        receipt_payload=payload,
-        receipt_persisted=persisted,
-        errors=errors + sink_errors,
-    )
+    return BootContinuityResult(False, False, state, 0, payload, persisted, errors + sink_errors)
 
 
 def _persist(
-    payload: dict[str, Any],
-    receipt_sink: ReceiptSink | None,
-) -> tuple[bool, tuple[str, ...]]:
+    payload: Dict[str, Any],
+    receipt_sink: Optional[ReceiptSink],
+) -> Tuple[bool, Tuple[str, ...]]:
     if receipt_sink is None:
         return False, ("receipt sink unavailable; event was not persisted",)
 

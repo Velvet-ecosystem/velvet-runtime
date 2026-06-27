@@ -7,7 +7,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, List, Mapping, Union
 
 
 @dataclass(frozen=True)
@@ -23,7 +23,7 @@ class BodyBinding:
     fingerprint: str
 
 
-def load_active_body(path: str | Path) -> BodyBinding:
+def load_active_body(path: Union[str, Path]) -> BodyBinding:
     registry_path = Path(path)
     if not registry_path.is_file():
         raise FileNotFoundError(f"body registry not found: {registry_path}")
@@ -82,10 +82,10 @@ def _binding_from_record(record: Mapping[str, Any]) -> BodyBinding:
     )
 
 
-def _organ_ids(value: Any) -> list[str]:
+def _organ_ids(value: Any) -> List[str]:
     if not isinstance(value, list) or not value:
         raise ValueError("active body requires a non-empty organs list")
-    result: list[str] = []
+    result = []
     for organ in value:
         if not isinstance(organ, dict):
             raise ValueError("each organ must be an object")

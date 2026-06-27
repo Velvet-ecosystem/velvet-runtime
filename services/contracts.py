@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Mapping, Protocol, runtime_checkable
+from typing import Any, Dict, Mapping, Optional, Protocol, Tuple, runtime_checkable
 
 from services.court_intent import Intent
 from services.court_token import CapabilityToken
@@ -11,7 +11,7 @@ from services.court_token import CapabilityToken
 
 @runtime_checkable
 class ReceiptSink(Protocol):
-    def __call__(self, envelope: dict[str, Any]) -> Any: ...
+    def __call__(self, envelope: Dict[str, Any]) -> Any: ...
 
 
 @runtime_checkable
@@ -20,7 +20,7 @@ class SafetyCheck(Protocol):
         self,
         token: CapabilityToken,
         parameters: Mapping[str, Any],
-    ) -> tuple[bool, str]: ...
+    ) -> Tuple[bool, str]: ...
 
 
 @runtime_checkable
@@ -37,7 +37,7 @@ class PipelineSubmitter(Protocol):
         intent: Intent,
         executor_name: str,
         parameters: Mapping[str, Any],
-        now: int | None = None,
+        now: Optional[int] = None,
     ) -> Any: ...
 
 

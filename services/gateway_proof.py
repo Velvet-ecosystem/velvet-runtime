@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Optional, Union
 
 from services.local_status_client import request_local_status
 from services.pipeline_provisioning import resolve_pipeline_paths
@@ -13,7 +13,7 @@ from services.pipeline_provisioning import resolve_pipeline_paths
 def run_gateway_proof(
     *,
     request_status: Callable[..., Any] = request_local_status,
-    receipt_path: str | Path | None = None,
+    receipt_path: Optional[Union[str, Path]] = None,
     intent_id: str = "gateway-proof-runtime-status",
     now: int = 100,
 ) -> Dict[str, Any]:

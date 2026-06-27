@@ -9,7 +9,7 @@ import platform
 import subprocess
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, Optional
 
 from services.startup_doctor import run_runtime_preflight
 
@@ -18,7 +18,7 @@ def _env_path(name: str, default: str) -> Path:
     return Path(os.environ.get(name, default))
 
 
-def _file_health(path: Path) -> dict[str, Any]:
+def _file_health(path: Path) -> Dict[str, Any]:
     try:
         stat = path.stat()
         return {
@@ -33,7 +33,7 @@ def _file_health(path: Path) -> dict[str, Any]:
         return {"path": str(path), "exists": False, "size_bytes": 0, "modified_at": None, "error": str(exc)}
 
 
-def _load_json_if_present(path: Path) -> dict[str, Any] | None:
+def _load_json_if_present(path: Path) -> Optional[Dict[str, Any]]:
     if not path.is_file():
         return None
     try:
@@ -43,7 +43,7 @@ def _load_json_if_present(path: Path) -> dict[str, Any] | None:
     return value if isinstance(value, dict) else {"unexpected_type": type(value).__name__}
 
 
-def _service_state(service_name: str) -> dict[str, Any]:
+def _service_state(service_name: str) -> Dict[str, Any]:
     try:
         result = subprocess.run(
             ["systemctl", "show", service_name, "--property=LoadState,ActiveState,SubState,Result", "--no-pager"],
@@ -55,7 +55,7 @@ def _service_state(service_name: str) -> dict[str, Any]:
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as exc:
         return {"available": False, "error": str(exc)}
 
-    values: dict[str, str] = {}
+    values = {}
     for line in result.stdout.splitlines():
         if "=" in line:
             key, value = line.split("=", 1)
@@ -71,7 +71,7 @@ def _service_state(service_name: str) -> dict[str, Any]:
     }
 
 
-def build_first_boot_snapshot(service_name: str = "velvet-runtime.service") -> dict[str, Any]:
+def build_first_boot_snapshot(service_name: str = "velvet-runtime.service") -> Dict[str, Any]:
     doctor = run_runtime_preflight()
     continuity_receipts = _env_path(
         "VELVET_CONTINUITY_RECEIPTS_PATH",

@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, Tuple, Union
 
 
 @dataclass(frozen=True)
@@ -17,14 +17,14 @@ class CapabilityContext:
     body_id: str
     surface: str
     session_id: str
-    proposed_capabilities: tuple[str, ...]
+    proposed_capabilities: Tuple[str, ...]
     authorization_required: bool = True
     actuation_granted: bool = False
 
 
 def build_capability_context(
     *,
-    policy_path: str | Path,
+    policy_path: Union[str, Path],
     session,
     body,
 ) -> CapabilityContext:
@@ -72,7 +72,7 @@ def build_capability_context(
     )
 
 
-def _load_json(path: Path) -> dict[str, Any]:
+def _load_json(path: Path) -> Dict[str, Any]:
     if not path.is_file():
         raise FileNotFoundError(f"capability context policy not found: {path}")
     try:
@@ -84,7 +84,7 @@ def _load_json(path: Path) -> dict[str, Any]:
     return value
 
 
-def _required_text(record: dict[str, Any], key: str) -> str:
+def _required_text(record: Dict[str, Any], key: str) -> str:
     value = record.get(key)
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"field {key!r} must be a non-empty string")

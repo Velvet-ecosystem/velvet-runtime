@@ -12,6 +12,18 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from services.startup_doctor import run_runtime_preflight
 
 
+AVAILABLE_COMPONENTS = {
+    "components": [
+        {"component": "event-protocol", "available": True, "required": True, "detail": "available"},
+        {"component": "receipts", "available": True, "required": True, "detail": "available"},
+        {"component": "ai-core", "available": True, "required": False, "detail": "available"},
+        {"component": "vehicle-can", "available": True, "required": False, "detail": "available"},
+        {"component": "interface", "available": True, "required": False, "detail": "available"},
+        {"component": "continuity-spine", "available": True, "required": False, "detail": "available"},
+    ]
+}
+
+
 class RuntimePreflightTests(unittest.TestCase):
     def setUp(self):
         self.tempdir = tempfile.TemporaryDirectory()
@@ -42,15 +54,15 @@ class RuntimePreflightTests(unittest.TestCase):
     def environment(self):
         return {name: str(path) for name, path in self.env.items()}
 
-    @patch("services.startup_doctor.importlib.util.find_spec", return_value=object())
-    def test_ready_when_required_inputs_exist(self, _probe):
+    @patch("services.startup_doctor.build_compatibility_report", return_value=AVAILABLE_COMPONENTS)
+    def test_ready_when_required_inputs_exist(self, _report):
         with patch.dict(os.environ, self.environment(), clear=False):
             report = run_runtime_preflight()
         self.assertTrue(report.ready)
         self.assertEqual(report.state, "ready")
 
-    @patch("services.startup_doctor.importlib.util.find_spec", return_value=object())
-    def test_short_signing_key_blocks_startup(self, _probe):
+    @patch("services.startup_doctor.build_compatibility_report", return_value=AVAILABLE_COMPONENTS)
+    def test_short_signing_key_blocks_startup(self, _report):
         self.env["VELVET_COURT_SIGNING_KEY_PATH"].write_bytes(b"short")
         with patch.dict(os.environ, self.environment(), clear=False):
             report = run_runtime_preflight()

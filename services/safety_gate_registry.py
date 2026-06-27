@@ -4,24 +4,24 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Dict, Mapping, Tuple
 
 from services.court_token import CapabilityToken
 
-GateCheck = Callable[[CapabilityToken, Mapping[str, Any]], tuple[bool, str]]
+GateCheck = Callable[[CapabilityToken, Mapping[str, Any]], Tuple[bool, str]]
 
 
 @dataclass(frozen=True)
 class SafetyGateSpec:
     name: str
     capability: str
-    targets: tuple[str, ...]
+    targets: Tuple[str, ...]
     check: GateCheck
 
 
 class SafetyGateRegistry:
     def __init__(self) -> None:
-        self._gates: dict[str, SafetyGateSpec] = {}
+        self._gates: Dict[str, SafetyGateSpec] = {}
 
     def register(self, spec: SafetyGateSpec) -> None:
         name = _normalize(spec.name)
@@ -48,7 +48,7 @@ class SafetyGateRegistry:
         self,
         token: CapabilityToken,
         parameters: Mapping[str, Any],
-    ) -> tuple[bool, str]:
+    ) -> Tuple[bool, str]:
         matches = [
             gate for gate in self._gates.values()
             if gate.capability == token.capability
@@ -69,7 +69,7 @@ class SafetyGateRegistry:
             return False, reason or f"safety gate {gate.name} denied execution"
         return True, reason or f"safety gate {gate.name} approved execution"
 
-    def names(self) -> tuple[str, ...]:
+    def names(self) -> Tuple[str, ...]:
         return tuple(sorted(self._gates))
 
     def count(self) -> int:

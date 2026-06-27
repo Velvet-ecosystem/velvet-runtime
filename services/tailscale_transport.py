@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import subprocess
 from dataclasses import dataclass
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any, Callable, Mapping, Optional, Sequence, Tuple
 
 
 @dataclass(frozen=True)
@@ -19,25 +19,20 @@ class TailscaleTransportStatus:
     available: bool
     connected: bool
     backend_state: str
-    node_name: str | None
-    tailnet_name: str | None
-    tailscale_ips: tuple[str, ...]
+    node_name: Optional[str]
+    tailnet_name: Optional[str]
+    tailscale_ips: Tuple[str, ...]
     transport_only: bool = True
     authority_granted: bool = False
     subnet_routing_enabled: bool = False
     funnel_enabled: bool = False
 
 
-Runner = Callable[[Sequence[str]], subprocess.CompletedProcess[str]]
+Runner = Callable[[Sequence[str]], subprocess.CompletedProcess]
 
 
-def probe_tailscale(*, runner: Runner | None = None) -> TailscaleTransportStatus:
-    """Return bounded local Tailscale state without changing system state.
-
-    Failure is represented as an unavailable, disconnected transport. Runtime
-    callers must never interpret a connected result as authorization or local
-    physical presence.
-    """
+def probe_tailscale(*, runner: Optional[Runner] = None) -> TailscaleTransportStatus:
+    """Return bounded local Tailscale state without changing system state."""
 
     command_runner = runner or _run_command
     try:
@@ -59,7 +54,7 @@ def probe_tailscale(*, runner: Runner | None = None) -> TailscaleTransportStatus
     return _status_from_payload(payload)
 
 
-def _run_command(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
+def _run_command(command: Sequence[str]) -> subprocess.CompletedProcess:
     return subprocess.run(
         list(command),
         check=False,
@@ -102,13 +97,13 @@ def _unavailable() -> TailscaleTransportStatus:
     )
 
 
-def _tailnet_name(value: Any) -> str | None:
+def _tailnet_name(value: Any) -> Optional[str]:
     if not isinstance(value, Mapping):
         return None
     return _bounded_text(value.get("Name"))
 
 
-def _bounded_text(value: Any, *, limit: int = 255) -> str | None:
+def _bounded_text(value: Any, *, limit: int = 255) -> Optional[str]:
     if not isinstance(value, str):
         return None
     value = value.strip()
@@ -117,7 +112,7 @@ def _bounded_text(value: Any, *, limit: int = 255) -> str | None:
     return value[:limit]
 
 
-def _bounded_ips(value: Any) -> tuple[str, ...]:
+def _bounded_ips(value: Any) -> Tuple[str, ...]:
     if not isinstance(value, list):
         return ()
     bounded = []

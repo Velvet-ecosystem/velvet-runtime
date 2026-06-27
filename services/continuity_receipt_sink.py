@@ -4,25 +4,20 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Dict, Union
 
 
 def make_continuity_receipt_sink(
-    filepath: str | Path = "receipts/continuity_receipts.log",
-) -> Callable[[dict[str, Any]], Any]:
-    """Return a sink that appends continuity events to Velvet Receipts.
-
-    Continuity Spine intentionally emits plain dictionaries. Velvet Receipts
-    intentionally accepts Receipt objects. This adapter is the narrow bridge
-    between those contracts.
-    """
+    filepath: Union[str, Path] = "receipts/continuity_receipts.log",
+) -> Callable[[Dict[str, Any]], Any]:
+    """Return a sink that appends continuity events to Velvet Receipts."""
 
     from receipt import Receipt
     from receipt_logger import ReceiptLogger
 
     logger = ReceiptLogger(filepath=str(filepath))
 
-    def sink(envelope: dict[str, Any]) -> Any:
+    def sink(envelope: Dict[str, Any]) -> Any:
         if not isinstance(envelope, dict):
             raise TypeError("continuity receipt envelope must be a dictionary")
 

@@ -8,12 +8,13 @@ import json
 import os
 import threading
 from pathlib import Path
+from typing import FrozenSet, Set, Union
 
 
 class TokenReplayLedger:
     """Append-only JSONL ledger of consumed capability-token identifiers."""
 
-    def __init__(self, path: str | Path) -> None:
+    def __init__(self, path: Union[str, Path]) -> None:
         self.path = Path(path)
         self._lock = threading.Lock()
         self._token_ids = self._load()
@@ -32,12 +33,7 @@ class TokenReplayLedger:
         self.consume(token_id)
 
     def consume(self, token_id: str) -> bool:
-        """Atomically consume a token across threads and local processes.
-
-        Returns True only for the first successful consumer. Returns False when
-        the token already exists. Persistence failure raises and therefore
-        prevents execution from proceeding.
-        """
+        """Atomically consume a token across threads and local processes."""
         normalized = _normalize(token_id)
         if not normalized:
             raise ValueError("token_id must be a non-empty normalized string")
@@ -67,12 +63,12 @@ class TokenReplayLedger:
                 finally:
                     fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
-    def snapshot(self) -> frozenset[str]:
+    def snapshot(self) -> FrozenSet[str]:
         with self._lock:
             self._token_ids = self._load()
             return frozenset(self._token_ids)
 
-    def _load(self) -> set[str]:
+    def _load(self) -> Set[str]:
         if not self.path.exists():
             return set()
         if not self.path.is_file():
@@ -81,8 +77,8 @@ class TokenReplayLedger:
             return _load_handle(handle, self.path)
 
 
-def _load_handle(handle, path: Path) -> set[str]:
-    token_ids: set[str] = set()
+def _load_handle(handle, path: Path) -> Set[str]:
+    token_ids = set()
     for line_number, line in enumerate(handle, start=1):
         if not line.strip():
             continue

@@ -9,6 +9,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import List, Optional
 
 from services.local_status_client import (
     request_can_observation,
@@ -53,7 +54,7 @@ def _load_repo_development_environment() -> bool:
     return True
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: Optional[List[str]] = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "doctor":
         from services.startup_doctor import run_runtime_preflight

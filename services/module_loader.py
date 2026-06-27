@@ -19,6 +19,7 @@ import importlib.util
 import inspect
 import os
 import sys
+from typing import List
 
 from velvet_logging.logger import get_logger
 
@@ -46,7 +47,7 @@ class ModuleLoader:
     def __init__(self, modules_dir: str, safe_publish):
         self.modules_dir = modules_dir
         self._safe_publish = safe_publish
-        self._loaded: list[str] = []
+        self._loaded = []  # type: List[str]
 
     def load_all(self) -> None:
         if not os.path.isdir(self.modules_dir):

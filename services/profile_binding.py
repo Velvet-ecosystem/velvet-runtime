@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, Optional, Union
 
 
 @dataclass(frozen=True)
@@ -27,7 +27,7 @@ class SessionBinding:
     owner_verified: bool
 
 
-def load_session_binding(profile_path: str | Path, session_path: str | Path) -> SessionBinding:
+def load_session_binding(profile_path: Union[str, Path], session_path: Union[str, Path]) -> SessionBinding:
     profiles_doc = _load_json(Path(profile_path), "profile registry")
     session_doc = _load_json(Path(session_path), "session context")
 
@@ -40,8 +40,8 @@ def load_session_binding(profile_path: str | Path, session_path: str | Path) -> 
     if not isinstance(profiles, list) or not profiles:
         raise ValueError("profile registry requires a non-empty profiles list")
 
-    by_id: dict[str, dict[str, Any]] = {}
-    guest: dict[str, Any] | None = None
+    by_id = {}
+    guest = None
     for item in profiles:
         if not isinstance(item, dict):
             raise ValueError("each profile must be an object")
@@ -83,7 +83,7 @@ def load_session_binding(profile_path: str | Path, session_path: str | Path) -> 
     )
 
 
-def _profile_from_record(record: dict[str, Any]) -> ProfileBinding:
+def _profile_from_record(record: Dict[str, Any]) -> ProfileBinding:
     if record.get("status") != "active":
         raise ValueError("selected profile is not active")
     return ProfileBinding(
@@ -95,7 +95,7 @@ def _profile_from_record(record: dict[str, Any]) -> ProfileBinding:
     )
 
 
-def _load_json(path: Path, label: str) -> dict[str, Any]:
+def _load_json(path: Path, label: str) -> Dict[str, Any]:
     if not path.is_file():
         raise FileNotFoundError(f"{label} not found: {path}")
     try:
@@ -107,7 +107,7 @@ def _load_json(path: Path, label: str) -> dict[str, Any]:
     return value
 
 
-def _required_text(record: dict[str, Any], key: str) -> str:
+def _required_text(record: Dict[str, Any], key: str) -> str:
     value = record.get(key)
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"field {key!r} must be a non-empty string")
