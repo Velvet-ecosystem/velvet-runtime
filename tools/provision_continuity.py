@@ -9,7 +9,7 @@ import json
 import os
 import secrets
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Dict, Optional
 
 from services.hardware_surface import SurfaceIdentity, collect_surface_identity
 
@@ -49,11 +49,11 @@ def provision_founder(
     genesis_note: str,
     authority_level: int = 1,
     force: bool = False,
-    proof_bytes: bytes | None = None,
-    surface_identity: SurfaceIdentity | None = None,
-    surface_reader: Callable[[Path], str | None] | None = None,
-    architecture: str | None = None,
-) -> dict[str, Any]:
+    proof_bytes: Optional[bytes] = None,
+    surface_identity: Optional[SurfaceIdentity] = None,
+    surface_reader: Optional[Callable[[Path], Optional[str]]] = None,
+    architecture: Optional[str] = None,
+) -> Dict[str, Any]:
     """Create and verify founder continuity files under ``root``."""
 
     from velvet_continuity import (
