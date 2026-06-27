@@ -1,5 +1,6 @@
 """Primary entrypoint for the Velvet AI runtime."""
 
+import os
 import signal
 import sys
 import time
@@ -20,6 +21,7 @@ from services.secure_boot_services import (
     PipelineProvisioningError,
     provision_pipeline_then_load_modules,
 )
+from services.startup_timing import StartupTimer
 
 logger = get_logger("velvet.main")
 _SHUTDOWN = False
@@ -44,13 +46,30 @@ def _run_recovery(reason, continuity=None):
     )
 
 
+def _startup_budget_ms():
+    raw = os.environ.get("VELVET_STARTUP_BUDGET_MS")
+    if raw is None:
+        return None
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning("[BOOT] Ignoring invalid VELVET_STARTUP_BUDGET_MS value.")
+        return None
+    if value <= 0:
+        logger.warning("[BOOT] Ignoring non-positive VELVET_STARTUP_BUDGET_MS value.")
+        return None
+    return value
+
+
 def main():
+    startup_timer = StartupTimer()
     logger.info("[BOOT] === Velvet Runtime Starting ===")
     signal.signal(signal.SIGINT, _handle_signal)
     signal.signal(signal.SIGTERM, _handle_signal)
 
     try:
         runtime = build_runtime()
+        startup_timer.mark("runtime wiring")
     except Exception as exc:
         logger.critical(f"[BOOT] Runtime wiring failed: {exc}")
         sys.exit(1)
@@ -62,6 +81,7 @@ def main():
             continuity_paths,
             identity_context=identity_context,
         )
+        startup_timer.mark("continuity verification")
     except Exception as exc:
         _run_recovery(f"continuity verification failed: {exc}")
         return
@@ -77,6 +97,7 @@ def main():
             identity_context=identity_context,
             safe_publish=runtime["publish"],
         )
+        startup_timer.mark("pipeline and modules")
     except PipelineProvisioningError as exc:
         _run_recovery(f"execution pipeline provisioning failed: {exc}", continuity)
         return
@@ -88,8 +109,10 @@ def main():
         pipeline=execution_pipeline,
         identity_context=identity_context,
     )
+    startup_timer.mark("local gateway")
 
     optional_status = activate_optional_subsystems()
+    startup_timer.mark("optional subsystems")
     logger.info(
         "[BOOT] Optional interface evaluated after secure boot: "
         f"interface_started={optional_status.interface_started}."
@@ -99,6 +122,11 @@ def main():
         "[BOOT] Execution pipeline provisioned with four read-only executors "
         "and four local routes; physical authority remains disabled."
     )
+
+    timing = startup_timer.report(budget_ms=_startup_budget_ms())
+    logger.info(f"[BOOT] Startup timing: {timing.to_dict()}")
+    if timing.within_budget is False:
+        logger.warning("[BOOT] Startup exceeded the configured small-hardware budget.")
 
     logger.info("[BOOT] Entering idle loop.")
     while not _SHUTDOWN:
