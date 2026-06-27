@@ -33,12 +33,10 @@ class FirstBootSnapshotTests(unittest.TestCase):
 
             doctor = SimpleNamespace(to_dict=lambda: {"ready": True, "state": "ready", "checks": []})
             service = {"available": True, "active_state": "active", "sub_state": "running"}
-            with (
-                patch.dict(os.environ, env, clear=False),
-                patch("services.first_boot_snapshot.run_runtime_preflight", return_value=doctor),
-                patch("services.first_boot_snapshot._service_state", return_value=service),
-            ):
-                snapshot = build_first_boot_snapshot()
+            with patch.dict(os.environ, env, clear=False):
+                with patch("services.first_boot_snapshot.run_runtime_preflight", return_value=doctor):
+                    with patch("services.first_boot_snapshot._service_state", return_value=service):
+                        snapshot = build_first_boot_snapshot()
 
             self.assertEqual(snapshot["schema"], "velvet.runtime.first_boot_snapshot.v1")
             self.assertEqual(snapshot["runtime_mode"], "development-read-only")
