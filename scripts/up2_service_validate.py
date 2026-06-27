@@ -8,8 +8,7 @@ import argparse
 import json
 import pathlib
 import subprocess
-import sys
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 REQUIRED_PROPERTIES = {
     "ActiveState": "active",
@@ -31,7 +30,7 @@ def command_output(command: List[str]) -> str:
 
 
 def parse_show(output: str) -> Dict[str, str]:
-    properties: Dict[str, str] = {}
+    properties = {}  # type: Dict[str, str]
     for line in output.splitlines():
         key, separator, value = line.partition("=")
         if separator:
@@ -40,7 +39,7 @@ def parse_show(output: str) -> Dict[str, str]:
 
 
 def validate_properties(properties: Dict[str, str], runtime_root: pathlib.Path) -> List[str]:
-    errors: List[str] = []
+    errors = []  # type: List[str]
     for key, expected in REQUIRED_PROPERTIES.items():
         actual = properties.get(key)
         if actual != expected:
@@ -61,7 +60,7 @@ def validate_properties(properties: Dict[str, str], runtime_root: pathlib.Path) 
     return errors
 
 
-def main(argv: List[str] | None = None) -> int:
+def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--service", default="velvet-runtime.service")
     parser.add_argument(
