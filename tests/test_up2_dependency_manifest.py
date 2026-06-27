@@ -3,6 +3,7 @@
 import ast
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from scripts.verify_up2_dependencies import load_manifest, verify
 
@@ -35,11 +36,44 @@ class Up2DependencyManifestTests(unittest.TestCase):
         self.assertIn("velvet_continuity", imports)
         self.assertIn("yaml", imports)
 
-    def test_interface_is_explicitly_optional_to_runtime_but_required_for_boot_window(self):
+    def test_interface_is_optional_for_baseline_and_required_for_preferred(self):
         manifest = load_manifest(MANIFEST)
-        self.assertTrue(manifest["interface"]["enabled"])
-        interface_imports = set(manifest["interface"]["python_imports"])
-        self.assertEqual(interface_imports, {"PyQt5", "velvet_interface"})
+        interface = manifest["interface"]
+        self.assertTrue(interface["enabled"])
+        self.assertFalse(interface["required_for_baseline"])
+        self.assertTrue(interface["required_for_preferred"])
+        self.assertEqual(set(interface["python_imports"]), {"PyQt5", "velvet_interface"})
+
+    def test_headless_board_can_be_baseline_ready(self):
+        manifest = load_manifest(MANIFEST)
+
+        def find_spec(name):
+            if name in {"PyQt5", "velvet_interface", "velvet_vehicle_can"}:
+                return None
+            return object()
+
+        with patch("scripts.verify_up2_dependencies.importlib.util.find_spec", side_effect=find_spec), \
+                patch("scripts.verify_up2_dependencies.shutil.which", return_value="/usr/bin/tool"), \
+                patch("scripts.verify_up2_dependencies.sys.version_info", (3, 10, 0)):
+            report = verify(manifest)
+
+        self.assertTrue(report["baseline_ready"])
+        self.assertFalse(report["preferred_ready"])
+        self.assertTrue(report["headless_ready"])
+        self.assertEqual(report["capability_tier"], "baseline")
+        self.assertEqual(set(report["missing_interface"]), {"PyQt5", "velvet_interface"})
+
+    def test_preferred_tier_requires_interface_imports(self):
+        manifest = load_manifest(MANIFEST)
+        with patch("scripts.verify_up2_dependencies.importlib.util.find_spec", return_value=object()), \
+                patch("scripts.verify_up2_dependencies.shutil.which", return_value="/usr/bin/tool"), \
+                patch("scripts.verify_up2_dependencies.sys.version_info", (3, 10, 0)):
+            report = verify(manifest)
+
+        self.assertTrue(report["baseline_ready"])
+        self.assertTrue(report["preferred_ready"])
+        self.assertFalse(report["headless_ready"])
+        self.assertEqual(report["capability_tier"], "preferred")
 
     def test_report_preserves_no_authority_claims(self):
         manifest = load_manifest(MANIFEST)

@@ -62,7 +62,11 @@ def validate_manifest(payload: Dict[str, Any]) -> None:
 
     interface = payload.get("interface")
     if not isinstance(interface, dict) or interface.get("enabled") is not True:
-        raise ValueError("first-boot interface must remain explicitly enabled")
+        raise ValueError("interface capability must remain explicitly enabled")
+    if interface.get("required_for_baseline") is not False:
+        raise ValueError("interface.required_for_baseline must remain false")
+    if interface.get("required_for_preferred") is not True:
+        raise ValueError("interface.required_for_preferred must remain true")
     interface_imports = set(_require_strings(interface.get("python_imports"), "interface.python_imports"))
     if interface_imports != {"PyQt5", "velvet_interface"}:
         raise ValueError("interface imports must be exactly PyQt5 and velvet_interface")
