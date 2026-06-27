@@ -22,6 +22,15 @@ jobs:
         with:
           python-version: "3.8"
 
+      - name: Report interpreter
+        run: python --version
+
+      - name: Compile Runtime tree on Python 3.8
+        run: python -m compileall -q velvet_cli.py services scripts tools tests
+
+      - name: Run Python 3.8 syntax gate
+        run: python -m unittest tests.test_python38_syntax -v
+
       - name: Validate UP2 dependency contract
         run: python scripts/validate_up2_manifest.py
 
