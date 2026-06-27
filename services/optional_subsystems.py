@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import List, Tuple
 
 from velvet_logging.logger import get_logger
 
@@ -13,13 +14,13 @@ logger = get_logger("velvet.optional_subsystems")
 @dataclass(frozen=True)
 class OptionalSubsystemStatus:
     interface_started: bool
-    warnings: tuple[str, ...]
+    warnings: Tuple[str, ...]
 
 
 def activate_optional_subsystems() -> OptionalSubsystemStatus:
     """Start the optional interface lifecycle without granting authority."""
 
-    warnings: list[str] = []
+    warnings = []  # type: List[str]
     interface_started = False
 
     try:
