@@ -11,6 +11,7 @@ from typing import Any, Callable, Optional
 from services.approved_executor import ExecutorRegistry
 from services.can_observation_executor import register_can_observation
 from services.can_signal_summary_executor import register_can_signal_summary
+from services.can_ghost_executor import register_can_ghost
 from services.execution_receipt_sink import make_execution_receipt_sink
 from services.host_telemetry_executor import register_host_telemetry
 from services.memory_recall_executor import register_memory_recall
@@ -75,6 +76,10 @@ def provision_runtime_pipeline(
         safety_gate_registry=safety_gate_registry,
     )
     register_can_signal_summary(
+        executor_registry=executor_registry,
+        safety_gate_registry=safety_gate_registry,
+    )
+    register_can_ghost(
         executor_registry=executor_registry,
         safety_gate_registry=safety_gate_registry,
     )

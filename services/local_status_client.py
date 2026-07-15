@@ -130,6 +130,24 @@ def request_can_signal_summary(
     )
 
 
+def request_can_ghost_observation(
+    *,
+    max_frames: int = 16,
+    gateway=None,
+    intent_id: Optional[str] = None,
+    now: Optional[int] = None,
+) -> LocalStatusResponse:
+    _validate_int_range("max_frames", max_frames, 1, 100)
+    return _request_observation(
+        route_id="can-ghost",
+        prefix="can-ghost",
+        parameters={"max_frames": max_frames},
+        gateway=gateway,
+        intent_id=intent_id,
+        now=now,
+    )
+
+
 def _validate_detail(detail: str) -> None:
     if detail not in {"summary", "full"}:
         raise ValueError("detail must be 'summary' or 'full'")

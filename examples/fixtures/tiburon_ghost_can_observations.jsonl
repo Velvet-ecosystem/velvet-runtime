@@ -1,0 +1,4 @@
+{"event_type":"vehicle.can.ghost_observation","timestamp":1.0,"can_id":"0x120","data_hex":"0000000000000000","signals":{"vehicle_speed_kph":0,"ignition_state":"off"}}
+{"event_type":"vehicle.can.ghost_observation","timestamp":1.1,"can_id":"0x130","data_hex":"9001000000000000","signals":{"engine_rpm":400,"o2_fault":true}}
+{"event_type":"vehicle.can.ghost_observation","timestamp":1.2,"can_id":"0x140","data_hex":"0100000000000000","signals":{"driver_seat":"occupied","driver_door":"closed"}}
+{"event_type":"vehicle.can.ghost_observation","timestamp":1.3,"can_id":"0x150","data_hex":"1500000000000000","signals":{"cabin_temp_c":21,"guest_mode":false}}
