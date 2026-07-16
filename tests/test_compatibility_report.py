@@ -41,7 +41,7 @@ class CompatibilityReportTests(unittest.TestCase):
         )
         components = (("vehicle-can", "velvet_vehicle_can", False),)
         with patch("services.compatibility_report.importlib.util.find_spec", return_value=object()), patch(
-            "services.compatibility_report.importlib.import_module", return_value=module
+            "services.compatibility_report.import_module", return_value=module
         ), patch("services.compatibility_report.metadata.version", return_value="0.1.0"):
             report = build_compatibility_report(components)
         component = report["components"][0]
@@ -55,7 +55,7 @@ class CompatibilityReportTests(unittest.TestCase):
         module = types.SimpleNamespace(decode_signal_map=object())
         components = (("vehicle-can", "velvet_vehicle_can", False),)
         with patch("services.compatibility_report.importlib.util.find_spec", return_value=object()), patch(
-            "services.compatibility_report.importlib.import_module", return_value=module
+            "services.compatibility_report.import_module", return_value=module
         ), patch("services.compatibility_report.metadata.version", return_value="0.0.9"):
             report = build_compatibility_report(components)
         component = report["components"][0]
