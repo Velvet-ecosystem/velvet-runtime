@@ -94,10 +94,18 @@ class TestPipelineProvisioning(unittest.TestCase):
             )
 
     @patch("services.pipeline_provisioning.record_startup_snapshot_receipt")
+    @patch("services.pipeline_provisioning.bind_receipt_sink_to_snapshot")
     @patch("services.pipeline_provisioning.make_execution_receipt_sink")
-    def test_supplied_snapshot_is_recorded_once_before_pipeline_return(self, make_sink, record):
-        receipt_sink = MagicMock()
-        make_sink.return_value = receipt_sink
+    def test_supplied_snapshot_binds_all_receipts_and_records_startup(
+        self,
+        make_sink,
+        bind_sink,
+        record,
+    ):
+        base_sink = MagicMock()
+        bound_sink = MagicMock()
+        make_sink.return_value = base_sink
+        bind_sink.return_value = bound_sink
         snapshot = object()
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -107,21 +115,26 @@ class TestPipelineProvisioning(unittest.TestCase):
                 identity_snapshot=snapshot,
             )
 
-        record.assert_called_once_with(snapshot, receipt_sink)
-        self.assertIsNotNone(pipeline)
+        bind_sink.assert_called_once_with(base_sink, snapshot)
+        record.assert_called_once_with(snapshot, bound_sink)
+        self.assertIs(pipeline.receipt_sink, bound_sink)
 
+    @patch("services.pipeline_provisioning.bind_receipt_sink_to_snapshot")
     @patch("services.pipeline_provisioning.record_startup_snapshot_receipt")
     @patch("services.pipeline_provisioning.make_execution_receipt_sink")
-    def test_missing_snapshot_preserves_existing_provisioning(self, make_sink, record):
-        make_sink.return_value = MagicMock()
+    def test_missing_snapshot_preserves_existing_provisioning(self, make_sink, record, bind_sink):
+        base_sink = MagicMock()
+        make_sink.return_value = base_sink
 
         with tempfile.TemporaryDirectory() as tmp:
-            provision_runtime_pipeline(
+            pipeline = provision_runtime_pipeline(
                 capability_context=self.context(),
                 paths=self.paths(Path(tmp)),
             )
 
+        bind_sink.assert_not_called()
         record.assert_not_called()
+        self.assertIs(pipeline.receipt_sink, base_sink)
 
 
 if __name__ == "__main__":
