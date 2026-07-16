@@ -15,6 +15,7 @@ from services.can_ghost_executor import register_can_ghost
 from services.execution_receipt_sink import make_execution_receipt_sink
 from services.host_telemetry_executor import register_host_telemetry
 from services.memory_recall_executor import register_memory_recall
+from services.receipt_snapshot_provenance import bind_receipt_sink_to_snapshot
 from services.runtime_pipeline import RuntimePipeline
 from services.runtime_status_executor import register_runtime_status
 from services.safety_gate_registry import SafetyGateRegistry
@@ -58,7 +59,12 @@ def provision_runtime_pipeline(
     resolved.receipt_ledger.parent.mkdir(parents=True, exist_ok=True)
 
     replay_ledger = TokenReplayLedger(resolved.replay_ledger)
-    receipt_sink = make_execution_receipt_sink(resolved.receipt_ledger)
+    base_receipt_sink = make_execution_receipt_sink(resolved.receipt_ledger)
+    receipt_sink = (
+        bind_receipt_sink_to_snapshot(base_receipt_sink, identity_snapshot)
+        if identity_snapshot is not None
+        else base_receipt_sink
+    )
     executor_registry = ExecutorRegistry()
     safety_gate_registry = SafetyGateRegistry()
 
