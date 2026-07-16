@@ -3,10 +3,9 @@
 
 from __future__ import annotations
 
-import importlib
 import importlib.util
 from dataclasses import asdict, dataclass
-from importlib import metadata
+from importlib import import_module, metadata
 from typing import Iterable, Optional, Tuple
 
 
@@ -117,7 +116,7 @@ def _missing_contract_symbols(module: str, contract) -> Tuple[str, ...]:
         return ()
     _, required_symbols = contract
     try:
-        imported = importlib.import_module(module)
+        imported = import_module(module)
     except (ImportError, AttributeError, ValueError):
         return tuple(required_symbols)
     return tuple(symbol for symbol in required_symbols if not hasattr(imported, symbol))
