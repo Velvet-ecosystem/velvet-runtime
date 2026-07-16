@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-only
-"""Read-only decoded CAN signal summaries behind the Runtime authority path."""
+"""Read-only canonical CAN observation events behind the Runtime authority path."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ CAN_SIGNAL_SUMMARY_ROUTE = IntentRoute(
 CAN_SIGNAL_SUMMARY_MANIFEST = {
     "schema": "velvet.executor.manifest.v1",
     "name": "can-signals",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "capability": "observe.telemetry",
     "targets": ["vehicle-can-signals"],
     "safety_gate": "can-signals-read-only-gate",
@@ -50,7 +50,7 @@ def register_can_signal_summary(
         name=manifest.safety_gate,
         capability=manifest.capability,
         targets=manifest.targets,
-        check=lambda token, parameters: (True, "read-only decoded CAN observations"),
+        check=lambda token, parameters: (True, "read-only canonical CAN observations"),
     ))
     make_observer = observer_factory or _default_observer_factory
     load_profile = profile_loader or _default_profile_loader
@@ -61,13 +61,21 @@ def register_can_signal_summary(
         minimum_confidence = validated.get("minimum_confidence", 0.5)
         max_signals = validated.get("max_signals", 16)
         try:
-            from velvet_vehicle_can import decode_signal_map, summarize_decoded_signals
+            from velvet_vehicle_can import (
+                build_can_observation_events,
+                decode_signal_map,
+                summarize_can_observation_events,
+            )
         except ImportError as exc:
-            raise RuntimeError("velvet-vehicle-can decoded signal support is required") from exc
+            raise RuntimeError("velvet-vehicle-can canonical observation support is required") from exc
         profile = load_profile()
         signal_map = getattr(profile, "signal_map", None)
         if signal_map is None:
             raise RuntimeError("vehicle profile does not provide a signal_map")
+        profile_digest = getattr(profile, "fingerprint_digest", None)
+        if not isinstance(profile_digest, str) or not profile_digest.strip():
+            raise RuntimeError("vehicle profile does not provide a fingerprint_digest")
+
         observer = make_observer()
         frames = []
         try:
@@ -80,9 +88,21 @@ def register_can_signal_summary(
             shutdown = getattr(observer, "shutdown", None)
             if callable(shutdown):
                 shutdown()
-        decoded = decode_signal_map(frames, signal_map, minimum_confidence=minimum_confidence, max_signals=max_signals)
-        raw_summary = summarize_decoded_signals(decoded)
-        return _bounded_summary_output(raw_summary, frame_count=len(frames))
+
+        decoded = decode_signal_map(
+            frames,
+            signal_map,
+            minimum_confidence=minimum_confidence,
+            max_signals=max_signals,
+        )
+        events = build_can_observation_events(
+            decoded,
+            bus_name=os.environ.get("VELVET_CAN_BUS_NAME", "obd_can"),
+            profile_digest=profile_digest,
+            max_events=max_signals,
+        )
+        raw_summary = summarize_can_observation_events(events)
+        return _bounded_event_output(raw_summary, frame_count=len(frames))
 
     executor_registry.register(ExecutorSpec(
         name=manifest.name,
@@ -93,28 +113,35 @@ def register_can_signal_summary(
     return manifest
 
 
-def _bounded_summary_output(raw: Any, *, frame_count: int) -> Dict[str, Any]:
+def _bounded_event_output(raw: Any, *, frame_count: int) -> Dict[str, Any]:
     if not isinstance(raw, Mapping):
-        raise RuntimeError("decoded CAN summary output must be a mapping")
-    signals = raw.get("signals", [])
-    if not isinstance(signals, list):
-        raise RuntimeError("decoded CAN summary signals must be a list")
+        raise RuntimeError("canonical CAN event summary must be a mapping")
+    events = raw.get("events", [])
+    if not isinstance(events, list):
+        raise RuntimeError("canonical CAN events must be a list")
+
     bounded = []
-    for item in signals:
+    for item in events:
         if not isinstance(item, Mapping):
-            raise RuntimeError("decoded CAN signal output must be a mapping")
+            raise RuntimeError("canonical CAN event must be a mapping")
         copied = dict(item)
+        copied["mode"] = "read-only"
         copied["status"] = "observation-only"
-        copied["read_only"] = True
+        copied["authority"] = "none"
         copied["actuation_granted"] = False
         copied["actuation_performed"] = False
         bounded.append(copied)
+
     return {
+        "schema": raw.get("schema", "velvet.can.observation.v1"),
+        "event": raw.get("event", "velvet.vehicle.can.observations"),
+        "source": "velvet-runtime",
         "mode": "read-only",
         "status": "observation-only",
         "frame_count": frame_count,
-        "signal_count": len(bounded),
-        "signals": bounded,
+        "event_count": len(bounded),
+        "events": bounded,
+        "authority": "none",
         "actuation_granted": False,
         "actuation_performed": False,
     }
