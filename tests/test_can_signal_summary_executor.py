@@ -33,14 +33,10 @@ class FakeObserver:
         self.closed = True
 
 
-class FakeSignal:
-    def __init__(self, **values):
-        self.__dict__.update(values)
-
-
 class FakeProfile:
-    def __init__(self, signal_map):
+    def __init__(self, signal_map, fingerprint_digest="tiburon-profile-digest"):
         self.signal_map = signal_map
+        self.fingerprint_digest = fingerprint_digest
 
 
 class TestCanSignalSummaryExecutor(unittest.TestCase):
@@ -55,7 +51,7 @@ class TestCanSignalSummaryExecutor(unittest.TestCase):
         )
         return executors.get("can-signals").handler, gates
 
-    def test_returns_bounded_observation_only_summary(self):
+    def test_returns_bounded_canonical_observation_events(self):
         try:
             from velvet_vehicle_can import SignalDef, SignalMap
         except ImportError:
@@ -76,10 +72,14 @@ class TestCanSignalSummaryExecutor(unittest.TestCase):
             "max_signals": 4,
         })
 
+        self.assertEqual(output["schema"], "velvet.can.observation.v1")
         self.assertEqual(output["frame_count"], 2)
-        self.assertEqual(output["signal_count"], 1)
-        self.assertEqual(output["signals"][0]["name"], "wheel_speed")
-        self.assertEqual(output["signals"][0]["raw_value"], 2)
+        self.assertEqual(output["event_count"], 1)
+        self.assertEqual(output["events"][0]["signal"], "vehicle.speed")
+        self.assertEqual(output["events"][0]["profile_field"], "wheel_speed")
+        self.assertEqual(output["events"][0]["raw_value"], 2)
+        self.assertEqual(output["events"][0]["profile_digest"], "tiburon-profile-digest")
+        self.assertEqual(output["events"][0]["authority"], "none")
         self.assertEqual(output["status"], "observation-only")
         self.assertFalse(output["actuation_granted"])
         self.assertFalse(output["actuation_performed"])
@@ -99,8 +99,8 @@ class TestCanSignalSummaryExecutor(unittest.TestCase):
 
         output = handler({"minimum_confidence": 0.5})
 
-        self.assertEqual(output["signal_count"], 0)
-        self.assertEqual(output["signals"], [])
+        self.assertEqual(output["event_count"], 0)
+        self.assertEqual(output["events"], [])
         self.assertTrue(observer.closed)
 
     def test_missing_signal_map_fails_closed(self):
@@ -116,10 +116,23 @@ class TestCanSignalSummaryExecutor(unittest.TestCase):
             handler({})
         self.assertFalse(observer.closed)
 
+    def test_missing_profile_digest_fails_closed(self):
+        try:
+            from velvet_vehicle_can import SignalMap
+        except ImportError:
+            self.skipTest("velvet-vehicle-can dependency is not installed")
+
+        observer = FakeObserver([])
+        profile = FakeProfile(SignalMap(), fingerprint_digest="")
+        handler, _ = self._handler_for(observer, profile)
+
+        with self.assertRaisesRegex(RuntimeError, "fingerprint_digest"):
+            handler({})
+        self.assertFalse(observer.closed)
+
     def test_manifest_rejects_unbounded_parameters(self):
         observer = FakeObserver([])
         handler, _ = self._handler_for(observer, FakeProfile(object()))
-
         with self.assertRaises(ValueError):
             handler({"max_frames": 101})
         with self.assertRaises(ValueError):
@@ -130,10 +143,9 @@ class TestCanSignalSummaryExecutor(unittest.TestCase):
     def test_gate_matches_only_decoded_signal_target(self):
         observer = FakeObserver([])
         _, gates = self._handler_for(observer, FakeProfile(object()))
-
         self.assertEqual(
             gates.evaluate(SimpleNamespace(capability="observe.telemetry", target="vehicle-can-signals"), {}),
-            (True, "read-only decoded CAN observations"),
+            (True, "read-only canonical CAN observations"),
         )
         self.assertEqual(
             gates.evaluate(SimpleNamespace(capability="observe.telemetry", target="vehicle-can"), {}),
