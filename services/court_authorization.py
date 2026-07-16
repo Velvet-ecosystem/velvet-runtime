@@ -17,6 +17,12 @@ from services.court_token import CapabilityToken, issue_token
 
 
 ReceiptSink = Callable[[dict[str, Any]], Any]
+_CONTEXT_BINDINGS = (
+    ("profile_id", "profile"),
+    ("session_id", "session"),
+    ("body_id", "body"),
+    ("surface", "surface"),
+)
 
 
 @dataclass(frozen=True)
@@ -48,6 +54,10 @@ def authorize_intent(
     if getattr(capability_context, "authorization_required", True) is not True:
         return _deny("invalid_capability_context", intent, policy_id, ("authorization must be required",), receipt_sink)
 
+    context_errors = _validate_context_binding(intent, capability_context)
+    if context_errors:
+        return _deny("context_mismatch", intent, policy_id, context_errors, receipt_sink)
+
     proposed = set(getattr(capability_context, "proposed_capabilities", ()))
     if intent.capability not in proposed:
         return _deny("capability_not_proposed", intent, policy_id, ("capability is outside the proposed context",), receipt_sink)
@@ -74,6 +84,19 @@ def authorize_intent(
     return CourtDecision(True, "authorized", policy_id, token, (), True)
 
 
+def _validate_context_binding(intent: Intent, capability_context) -> tuple[str, ...]:
+    errors: list[str] = []
+    for field, label in _CONTEXT_BINDINGS:
+        expected = getattr(capability_context, field, None)
+        if not isinstance(expected, str) or not expected.strip():
+            errors.append(f"capability context {label} identity is missing")
+            continue
+        normalized = _text(expected)
+        if normalized != getattr(intent, field):
+            errors.append(f"intent {label} does not match active capability context")
+    return tuple(errors)
+
+
 def _deny(state, intent, policy_id, errors, receipt_sink):
     receipt = _decision_receipt("COURT_DENIED", state, intent, policy_id, None, errors)
     persisted, persist_errors = _persist(receipt, receipt_sink)
@@ -90,6 +113,10 @@ def _decision_receipt(event_type, state, intent, policy_id, token_id, errors):
             "intent_id": intent.intent_id,
             "capability": intent.capability,
             "target": intent.target,
+            "profile_id": intent.profile_id,
+            "session_id": intent.session_id,
+            "body_id": intent.body_id,
+            "surface": intent.surface,
             "policy_id": policy_id,
             "token_id": token_id,
             "errors": list(errors),
