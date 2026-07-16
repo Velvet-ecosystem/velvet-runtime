@@ -42,6 +42,10 @@ class TestRuntimePipeline(unittest.TestCase):
             policy_id="owner-default",
             authorization_required=True,
             proposed_capabilities=("comfort.request",),
+            profile_id="owner",
+            session_id="session-1",
+            body_id="tiburon_v0",
+            surface="drive",
         )
         self.pipeline = RuntimePipeline(
             capability_context=context,
