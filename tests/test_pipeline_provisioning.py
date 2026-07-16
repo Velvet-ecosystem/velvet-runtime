@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -27,6 +27,13 @@ class TestPipelineProvisioning(unittest.TestCase):
             authorization_required=True,
             actuation_granted=False,
         )
+
+    def paths(self, root: Path) -> PipelinePaths:
+        policy = root / "court.json"
+        key = root / "court.key"
+        policy.write_text(json.dumps({"schema": "velvet.court.policy.v1", "policies": []}), encoding="utf-8")
+        key.write_bytes(b"k" * 32)
+        return PipelinePaths(policy, key, root / "replay.jsonl", root / "execution.log")
 
     def test_environment_overrides_paths(self):
         env = {
@@ -56,13 +63,9 @@ class TestPipelineProvisioning(unittest.TestCase):
         make_sink.return_value = lambda envelope: envelope
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            policy = root / "court.json"
-            key = root / "court.key"
-            policy.write_text(json.dumps({"schema": "velvet.court.policy.v1", "policies": []}), encoding="utf-8")
-            key.write_bytes(b"k" * 32)
             pipeline = provision_runtime_pipeline(
                 capability_context=self.context(),
-                paths=PipelinePaths(policy, key, root / "replay.jsonl", root / "execution.log"),
+                paths=self.paths(root),
             )
             self.assertEqual(pipeline.executor_registry.count(), 5)
             self.assertEqual(
@@ -89,6 +92,36 @@ class TestPipelineProvisioning(unittest.TestCase):
                 pipeline.safety_check(SimpleNamespace(capability="observe.telemetry", target="vehicle-can-ghost"), {}),
                 (True, "synthetic read-only CAN ghost observation"),
             )
+
+    @patch("services.pipeline_provisioning.record_startup_snapshot_receipt")
+    @patch("services.pipeline_provisioning.make_execution_receipt_sink")
+    def test_supplied_snapshot_is_recorded_once_before_pipeline_return(self, make_sink, record):
+        receipt_sink = MagicMock()
+        make_sink.return_value = receipt_sink
+        snapshot = object()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            pipeline = provision_runtime_pipeline(
+                capability_context=self.context(),
+                paths=self.paths(Path(tmp)),
+                identity_snapshot=snapshot,
+            )
+
+        record.assert_called_once_with(snapshot, receipt_sink)
+        self.assertIsNotNone(pipeline)
+
+    @patch("services.pipeline_provisioning.record_startup_snapshot_receipt")
+    @patch("services.pipeline_provisioning.make_execution_receipt_sink")
+    def test_missing_snapshot_preserves_existing_provisioning(self, make_sink, record):
+        make_sink.return_value = MagicMock()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            provision_runtime_pipeline(
+                capability_context=self.context(),
+                paths=self.paths(Path(tmp)),
+            )
+
+        record.assert_not_called()
 
 
 if __name__ == "__main__":
