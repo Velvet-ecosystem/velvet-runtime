@@ -3,6 +3,7 @@
 import json
 import tempfile
 import unittest
+from importlib import metadata
 from pathlib import Path
 from unittest.mock import patch
 
@@ -73,9 +74,11 @@ class TestSystemIdentitySnapshot(unittest.TestCase):
                 build_system_identity_snapshot(created_at=1.0, artifact_paths=paths)
 
     @patch("services.system_identity_snapshot.build_compatibility_report", return_value={"components": []})
-    @patch("services.system_identity_snapshot.metadata.version")
-    def test_invalid_json_fails_closed(self, version, _compatibility):
-        version.side_effect = __import__("importlib").metadata.PackageNotFoundError
+    @patch(
+        "services.system_identity_snapshot.metadata.version",
+        side_effect=metadata.PackageNotFoundError,
+    )
+    def test_invalid_json_fails_closed(self, _version, _compatibility):
         with tempfile.TemporaryDirectory() as tmp:
             paths = self._artifacts(Path(tmp))
             paths["session_context"].write_text("not-json", encoding="utf-8")
