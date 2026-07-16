@@ -18,6 +18,7 @@ from services.memory_recall_executor import register_memory_recall
 from services.runtime_pipeline import RuntimePipeline
 from services.runtime_status_executor import register_runtime_status
 from services.safety_gate_registry import SafetyGateRegistry
+from services.startup_snapshot_receipt import record_startup_snapshot_receipt
 from services.token_replay_ledger import TokenReplayLedger
 
 
@@ -46,6 +47,7 @@ def provision_runtime_pipeline(
     capability_context,
     paths: Optional[PipelinePaths] = None,
     recall_provider: Optional[Callable[[str, int], Any]] = None,
+    identity_snapshot: Optional[Any] = None,
 ) -> RuntimePipeline:
     resolved = paths or resolve_pipeline_paths()
     signing_key = _read_signing_key(resolved.court_signing_key)
@@ -90,7 +92,7 @@ def provision_runtime_pipeline(
             safety_gate_registry=safety_gate_registry,
         )
 
-    return RuntimePipeline(
+    pipeline = RuntimePipeline(
         capability_context=capability_context,
         court_policy_path=resolved.court_policy,
         signing_key=signing_key,
@@ -99,6 +101,9 @@ def provision_runtime_pipeline(
         receipt_sink=receipt_sink,
         replay_ledger=replay_ledger,
     )
+    if identity_snapshot is not None:
+        record_startup_snapshot_receipt(identity_snapshot, receipt_sink)
+    return pipeline
 
 
 def _read_signing_key(path: Path) -> bytes:
