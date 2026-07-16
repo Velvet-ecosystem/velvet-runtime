@@ -46,7 +46,7 @@ def _compatibility_checks() -> list:
         checks.append(
             PreflightCheck(
                 "component:{}".format(component["component"]),
-                bool(component["available"]),
+                bool(component.get("compatible", component["available"])),
                 bool(component["required"]),
                 component["detail"],
             )
