@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib
 import importlib.util
 from dataclasses import asdict, dataclass
 from importlib import metadata
@@ -15,11 +16,16 @@ class ComponentProbe:
     module: str
     required: bool
     available: bool
+    compatible: bool
     version: Optional[str]
+    contract: Optional[str]
+    missing_symbols: Tuple[str, ...]
     detail: str
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        document = asdict(self)
+        document["missing_symbols"] = list(self.missing_symbols)
+        return document
 
 
 _COMPONENTS: Tuple[Tuple[str, str, bool], ...] = (
@@ -31,13 +37,29 @@ _COMPONENTS: Tuple[Tuple[str, str, bool], ...] = (
     ("continuity-spine", "continuity_spine", False),
 )
 
+_CONTRACTS = {
+    "vehicle-can": (
+        "velvet.can.observation.v1",
+        (
+            "CAN_OBSERVATION_SCHEMA",
+            "build_can_observation_events",
+            "decode_signal_map",
+            "summarize_can_observation_events",
+        ),
+    ),
+}
+
 
 def build_compatibility_report(
     components: Iterable[Tuple[str, str, bool]] = _COMPONENTS,
 ) -> dict:
     probes = tuple(_probe(component, module, required) for component, module, required in components)
-    required_missing = tuple(probe.component for probe in probes if probe.required and not probe.available)
-    optional_missing = tuple(probe.component for probe in probes if not probe.required and not probe.available)
+    required_missing = tuple(
+        probe.component for probe in probes if probe.required and not probe.compatible
+    )
+    optional_missing = tuple(
+        probe.component for probe in probes if not probe.required and not probe.compatible
+    )
     return {
         "compatible": not required_missing,
         "state": "blocked" if required_missing else "compatible_with_optional_gaps" if optional_missing else "compatible",
@@ -48,16 +70,57 @@ def build_compatibility_report(
 
 
 def _probe(component: str, module: str, required: bool) -> ComponentProbe:
+    contract = _CONTRACTS.get(component)
+    contract_name = contract[0] if contract is not None else None
     try:
         available = importlib.util.find_spec(module) is not None
     except (ImportError, AttributeError, ValueError) as exc:
-        return ComponentProbe(component, module, required, False, None, "module probe failed: {}".format(exc))
+        return ComponentProbe(
+            component, module, required, False, False, None, contract_name, (),
+            "module probe failed: {}".format(exc),
+        )
     if not available:
-        return ComponentProbe(component, module, required, False, None, "module not installed")
+        return ComponentProbe(
+            component, module, required, False, False, None, contract_name, (),
+            "module not installed",
+        )
 
     version = _module_version(module)
-    detail = "available" if version is None else "available, version {}".format(version)
-    return ComponentProbe(component, module, required, True, version, detail)
+    missing_symbols = _missing_contract_symbols(module, contract)
+    compatible = not missing_symbols
+    version_detail = "available" if version is None else "available, version {}".format(version)
+    if missing_symbols:
+        detail = "{}, incompatible with {}: missing {}".format(
+            version_detail,
+            contract_name,
+            ", ".join(missing_symbols),
+        )
+    elif contract_name is not None:
+        detail = "{}, contract {} satisfied".format(version_detail, contract_name)
+    else:
+        detail = version_detail
+    return ComponentProbe(
+        component,
+        module,
+        required,
+        True,
+        compatible,
+        version,
+        contract_name,
+        missing_symbols,
+        detail,
+    )
+
+
+def _missing_contract_symbols(module: str, contract) -> Tuple[str, ...]:
+    if contract is None:
+        return ()
+    _, required_symbols = contract
+    try:
+        imported = importlib.import_module(module)
+    except (ImportError, AttributeError, ValueError):
+        return tuple(required_symbols)
+    return tuple(symbol for symbol in required_symbols if not hasattr(imported, symbol))
 
 
 def _module_version(module: str) -> Optional[str]:
