@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from services.court_authorization import authorize_intent
 from services.court_intent import Intent
+from services.court_reasons import CourtReasonCode
 from services.court_token import verify_token
 
 
@@ -78,12 +79,15 @@ class TestCourtAuthorization(unittest.TestCase):
         self.assertTrue(decision.allowed)
         self.assertTrue(decision.receipt_persisted)
         self.assertIsNotNone(decision.token)
+        self.assertEqual(decision.reason.code, CourtReasonCode.POLICY_MATCH)
         self.assertTrue(verify_token(decision.token, signing_key=key, now=110))
         self.assertFalse(verify_token(decision.token, signing_key=key, now=131))
         self.assertFalse(self.receipts[0]["payload"]["execution_performed"])
         self.assertFalse(self.receipts[0]["payload"]["actuation_performed"])
         self.assertEqual(self.receipts[0]["payload"]["body_id"], "tiburon_v0")
         self.assertEqual(self.receipts[0]["payload"]["session_id"], "session-1")
+        self.assertEqual(self.receipts[0]["payload"]["reason"]["code"], "POLICY_MATCH")
+        self.assertEqual(self.receipts[0]["payload"]["reason"]["details"], [])
 
     def test_each_identity_mismatch_is_denied_and_receipted(self):
         cases = (
@@ -99,10 +103,13 @@ class TestCourtAuthorization(unittest.TestCase):
                 decision = self.authorize(intent=intent)
                 self.assertFalse(decision.allowed)
                 self.assertEqual(decision.state, "context_mismatch")
+                self.assertEqual(decision.reason.code, CourtReasonCode.CONTEXT_MISMATCH)
                 self.assertIsNone(decision.token)
                 self.assertIn(label, decision.errors[0])
                 self.assertEqual(self.receipts[0]["event_type"], "COURT_DENIED")
                 self.assertEqual(self.receipts[0]["payload"]["state"], "context_mismatch")
+                self.assertEqual(self.receipts[0]["payload"]["reason"]["code"], "CONTEXT_MISMATCH")
+                self.assertIn(label, self.receipts[0]["payload"]["reason"]["details"][0])
 
     def test_missing_context_identity_fails_closed(self):
         context = SimpleNamespace(**{
@@ -112,6 +119,7 @@ class TestCourtAuthorization(unittest.TestCase):
         decision = self.authorize(context=context)
         self.assertFalse(decision.allowed)
         self.assertEqual(decision.state, "context_mismatch")
+        self.assertEqual(decision.reason.code, CourtReasonCode.CONTEXT_MISMATCH)
         self.assertIn("missing", decision.errors[0])
 
     def test_unproposed_capability_is_denied_and_receipted(self):
@@ -119,10 +127,15 @@ class TestCourtAuthorization(unittest.TestCase):
         decision = self.authorize(intent=intent)
         self.assertFalse(decision.allowed)
         self.assertEqual(decision.state, "capability_not_proposed")
+        self.assertEqual(decision.reason.code, CourtReasonCode.CAPABILITY_NOT_PROPOSED)
         self.assertIsNone(decision.token)
         self.assertEqual(self.receipts[0]["event_type"], "COURT_DENIED")
+        self.assertEqual(
+            self.receipts[0]["payload"]["reason"]["code"],
+            "CAPABILITY_NOT_PROPOSED",
+        )
 
-    def test_unreceipted_authorization_fails_closed(self):
+    def test_unreceipted_authorization_fails_closed_with_reason(self):
         def fail(_):
             raise OSError("disk unavailable")
 
@@ -136,6 +149,11 @@ class TestCourtAuthorization(unittest.TestCase):
         )
         self.assertFalse(decision.allowed)
         self.assertEqual(decision.state, "authorization_unreceipted")
+        self.assertEqual(
+            decision.reason.code,
+            CourtReasonCode.RECEIPT_PERSISTENCE_FAILED,
+        )
+        self.assertIn("disk unavailable", decision.reason.details[0])
         self.assertIsNone(decision.token)
 
 
