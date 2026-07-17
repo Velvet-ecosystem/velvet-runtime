@@ -1,17 +1,18 @@
 # SPDX-License-Identifier: GPL-3.0-only
 """Approved, named executor contract for Velvet Runtime.
 
-Executors are registered code paths. They receive only validated parameters
-after Court-token verification, executor binding, safety approval, replay checks,
-and persistence of an execution-start receipt.
+Executors are registered code paths. They receive only contract-validated
+parameters after Court-token verification, executor binding, safety approval,
+replay checks, and persistence of an execution-start receipt.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Mapping, MutableSet, Optional, Protocol, Tuple, Union, runtime_checkable
 
 from services.court_token import CapabilityToken, verify_token
+from services.execution_contract import ExecutionContract, validate_parameters
 
 
 Executor = Callable[[Mapping[str, Any]], Mapping[str, Any]]
@@ -31,6 +32,7 @@ class ExecutorSpec:
     capability: str
     targets: Tuple[str, ...]
     handler: Executor
+    contract: ExecutionContract = field(default_factory=ExecutionContract)
 
 
 @dataclass(frozen=True)
@@ -43,6 +45,7 @@ class ExecutionResult:
     start_receipt_persisted: bool
     final_receipt_persisted: bool
     errors: Tuple[str, ...] = ()
+    contract_id: Optional[str] = None
 
 
 class ExecutorRegistry:
@@ -57,9 +60,16 @@ class ExecutorRegistry:
             raise ValueError("executor name, capability, and targets are required")
         if not callable(spec.handler):
             raise ValueError("executor handler must be callable")
+        contract = spec.contract.normalized()
         if name in self._executors:
             raise ValueError(f"executor {name!r} is already registered")
-        self._executors[name] = ExecutorSpec(name, capability, targets, spec.handler)
+        self._executors[name] = ExecutorSpec(
+            name,
+            capability,
+            targets,
+            spec.handler,
+            contract,
+        )
 
     def get(self, name: str) -> ExecutorSpec:
         normalized = _normalized(name)
@@ -95,36 +105,100 @@ def execute_authorized(
 
     name = _normalized(executor_name)
     if token.token_id in used_token_ids:
-        return _deny("token_replay", name, token, ("capability token was already consumed",), receipt_sink)
+        return _deny(
+            "token_replay",
+            name,
+            token,
+            None,
+            ("capability token was already consumed",),
+            receipt_sink,
+        )
 
     if not verify_token(token, signing_key=signing_key, now=now):
-        return _deny("invalid_token", name, token, ("capability token failed signature or expiry verification",), receipt_sink)
+        return _deny(
+            "invalid_token",
+            name,
+            token,
+            None,
+            ("capability token failed signature or expiry verification",),
+            receipt_sink,
+        )
 
     try:
         spec = registry.get(name)
     except KeyError as exc:
-        return _deny("executor_not_registered", name, token, (str(exc),), receipt_sink)
+        return _deny(
+            "executor_not_registered",
+            name,
+            token,
+            None,
+            (str(exc),),
+            receipt_sink,
+        )
 
     if spec.capability != token.capability:
-        return _deny("executor_capability_mismatch", name, token, ("executor is not bound to token capability",), receipt_sink)
+        return _deny(
+            "executor_capability_mismatch",
+            name,
+            token,
+            spec.contract,
+            ("executor is not bound to token capability",),
+            receipt_sink,
+        )
     if "*" not in spec.targets and token.target not in spec.targets:
-        return _deny("executor_target_mismatch", name, token, ("executor is not bound to token target",), receipt_sink)
+        return _deny(
+            "executor_target_mismatch",
+            name,
+            token,
+            spec.contract,
+            ("executor is not bound to token target",),
+            receipt_sink,
+        )
+
+    parameter_errors = validate_parameters(spec.contract, parameters)
+    if parameter_errors:
+        return _deny(
+            "execution_contract_denied",
+            name,
+            token,
+            spec.contract,
+            parameter_errors,
+            receipt_sink,
+        )
 
     safe, reason = safety_check(token, parameters)
     if safe is not True:
-        return _deny("safety_denied", name, token, (reason or "safety check denied execution",), receipt_sink)
+        return _deny(
+            "safety_denied",
+            name,
+            token,
+            spec.contract,
+            (reason or "safety check denied execution",),
+            receipt_sink,
+        )
 
     start_receipt = _receipt(
         "EXECUTION_STARTED",
         "started",
         spec.name,
         token,
+        spec.contract,
         output=None,
         errors=(),
         actuation_performed=False,
     )
     if not _persist(start_receipt, receipt_sink):
-        return ExecutionResult(False, "start_receipt_unpersisted", name, token.token_id, None, False, False, ("execution-start receipt could not be persisted",))
+        return ExecutionResult(
+            False,
+            "start_receipt_unpersisted",
+            name,
+            token.token_id,
+            None,
+            False,
+            False,
+            ("execution-start receipt could not be persisted",),
+            spec.contract.contract_id,
+        )
 
     try:
         consumed = _consume_token(used_token_ids, token.token_id)
@@ -135,12 +209,23 @@ def execute_authorized(
             "replay_ledger_failed",
             spec.name,
             token,
+            spec.contract,
             output=None,
             errors=errors,
             actuation_performed=False,
         )
         persisted = _persist(denied, receipt_sink)
-        return ExecutionResult(False, "replay_ledger_failed", name, token.token_id, None, True, persisted, errors)
+        return ExecutionResult(
+            False,
+            "replay_ledger_failed",
+            name,
+            token.token_id,
+            None,
+            True,
+            persisted,
+            errors,
+            spec.contract.contract_id,
+        )
 
     if not consumed:
         errors = ("capability token was consumed by another execution process",)
@@ -149,12 +234,23 @@ def execute_authorized(
             "token_replay",
             spec.name,
             token,
+            spec.contract,
             output=None,
             errors=errors,
             actuation_performed=False,
         )
         persisted = _persist(denied, receipt_sink)
-        return ExecutionResult(False, "token_replay", name, token.token_id, None, True, persisted, errors)
+        return ExecutionResult(
+            False,
+            "token_replay",
+            name,
+            token.token_id,
+            None,
+            True,
+            persisted,
+            errors,
+            spec.contract.contract_id,
+        )
 
     try:
         output = dict(spec.handler(dict(parameters)))
@@ -164,26 +260,87 @@ def execute_authorized(
             "failed",
             spec.name,
             token,
+            spec.contract,
             output=None,
             errors=(str(exc),),
             actuation_performed=None,
         )
         persisted = _persist(failed, receipt_sink)
-        return ExecutionResult(False, "executor_failed", name, token.token_id, None, True, persisted, (str(exc),))
+        return ExecutionResult(
+            False,
+            "executor_failed",
+            name,
+            token.token_id,
+            None,
+            True,
+            persisted,
+            (str(exc),),
+            spec.contract.contract_id,
+        )
+
+    completion_error = _validate_completion(spec.contract, output)
+    if completion_error:
+        errors = (completion_error,)
+        failed = _receipt(
+            "EXECUTION_FAILED",
+            "contract_completion_mismatch",
+            spec.name,
+            token,
+            spec.contract,
+            output=output,
+            errors=errors,
+            actuation_performed=bool(output.get("actuation_performed", False)),
+        )
+        persisted = _persist(failed, receipt_sink)
+        return ExecutionResult(
+            False,
+            "contract_completion_mismatch",
+            name,
+            token.token_id,
+            output,
+            True,
+            persisted,
+            errors,
+            spec.contract.contract_id,
+        )
 
     completed = _receipt(
         "EXECUTION_COMPLETED",
-        "completed",
+        spec.contract.expected_completion_state,
         spec.name,
         token,
+        spec.contract,
         output=output,
         errors=(),
         actuation_performed=bool(output.get("actuation_performed", False)),
     )
     final_persisted = _persist(completed, receipt_sink)
-    state = "completed" if final_persisted else "completed_unreceipted"
+    state = spec.contract.expected_completion_state if final_persisted else "completed_unreceipted"
     errors = () if final_persisted else ("final execution receipt could not be persisted",)
-    return ExecutionResult(True, state, name, token.token_id, output, True, final_persisted, errors)
+    return ExecutionResult(
+        True,
+        state,
+        name,
+        token.token_id,
+        output,
+        True,
+        final_persisted,
+        errors,
+        spec.contract.contract_id,
+    )
+
+
+def _validate_completion(contract: ExecutionContract, output: Mapping[str, Any]) -> str:
+    reported = output.get("state")
+    if reported is None:
+        return ""
+    normalized = _normalized(reported)
+    if normalized != contract.expected_completion_state:
+        return "executor reported state '{}' but contract requires '{}'".format(
+            normalized,
+            contract.expected_completion_state,
+        )
+    return ""
 
 
 def _consume_token(ledger, token_id: str) -> bool:
@@ -196,21 +353,42 @@ def _consume_token(ledger, token_id: str) -> bool:
     return True
 
 
-def _deny(state, name, token, errors, receipt_sink):
+def _deny(state, name, token, contract, errors, receipt_sink):
     receipt = _receipt(
         "EXECUTION_DENIED",
         state,
         name,
         token,
+        contract,
         output=None,
         errors=errors,
         actuation_performed=False,
     )
     persisted = _persist(receipt, receipt_sink)
-    return ExecutionResult(False, state, name, token.token_id, None, False, persisted, errors)
+    return ExecutionResult(
+        False,
+        state,
+        name,
+        token.token_id,
+        None,
+        False,
+        persisted,
+        errors,
+        contract.contract_id if contract else None,
+    )
 
 
-def _receipt(event_type, state, executor_name, token, *, output, errors, actuation_performed):
+def _receipt(
+    event_type,
+    state,
+    executor_name,
+    token,
+    contract,
+    *,
+    output,
+    errors,
+    actuation_performed,
+):
     return {
         "event_type": event_type,
         "source": "velvet-runtime",
@@ -218,6 +396,7 @@ def _receipt(event_type, state, executor_name, token, *, output, errors, actuati
         "payload": {
             "state": state,
             "executor_name": executor_name,
+            "execution_contract": contract.to_dict() if contract else None,
             "token_id": token.token_id,
             "intent_id": token.intent_id,
             "capability": token.capability,
@@ -239,7 +418,7 @@ def _persist(receipt: Dict[str, Any], sink: ReceiptSink) -> bool:
     return True
 
 
-def _normalized(value: str) -> str:
+def _normalized(value: object) -> str:
     if not isinstance(value, str):
         return ""
     return " ".join(value.strip().split()).lower()
