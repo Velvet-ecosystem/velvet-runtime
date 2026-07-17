@@ -87,7 +87,13 @@ class TestCourtAuthorization(unittest.TestCase):
         self.assertEqual(self.receipts[0]["payload"]["body_id"], "tiburon_v0")
         self.assertEqual(self.receipts[0]["payload"]["session_id"], "session-1")
         self.assertEqual(self.receipts[0]["payload"]["reason"]["code"], "POLICY_MATCH")
-        self.assertEqual(self.receipts[0]["payload"]["reason"]["details"], [])
+        self.assertEqual(
+            self.receipts[0]["payload"]["reason"]["details"],
+            [
+                "all 1 active policies permitted the request",
+                "token lifetime restricted to 30 seconds",
+            ],
+        )
 
     def test_each_identity_mismatch_is_denied_and_receipted(self):
         cases = (
