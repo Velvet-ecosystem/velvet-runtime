@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 
 @dataclass(frozen=True)
@@ -18,6 +18,7 @@ class CapabilityContext:
     surface: str
     session_id: str
     proposed_capabilities: Tuple[str, ...]
+    authority_profiles: Optional[Tuple[str, ...]] = None
     authorization_required: bool = True
     actuation_granted: bool = False
 
@@ -64,6 +65,7 @@ def build_capability_context(
     return CapabilityContext(
         policy_id=_required_text(policy, "policy_id"),
         authority_profile=authority_profile,
+        authority_profiles=(authority_profile,),
         profile_id=session.profile.profile_id,
         body_id=body.body_id,
         surface=body.surface,

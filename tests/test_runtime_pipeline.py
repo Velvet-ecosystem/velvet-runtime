@@ -40,6 +40,7 @@ class TestRuntimePipeline(unittest.TestCase):
         ))
         context = SimpleNamespace(
             policy_id="owner-default",
+            authority_profile="owner",
             authorization_required=True,
             proposed_capabilities=("comfort.request",),
             profile_id="owner",

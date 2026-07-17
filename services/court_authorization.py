@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-only
 """Policy decision layer for Court authorization.
 
-This module validates intent, resolves one ordered active policy set, persists a
-decision receipt, and may issue a bounded capability token. It never calls
-executors.
+This module validates intent, resolves authority and active policy sets,
+persists a decision receipt, and may issue a bounded capability token. It never
+calls executors.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+from services.court_authority import AuthorityResolution, resolve_authority
 from services.court_intent import Intent, validate_intent
 from services.court_policy_resolution import (
     PolicyResolution,
@@ -42,6 +43,9 @@ class CourtDecision:
     reason: CourtReason
     policy_ids: tuple[str, ...] = ()
     policy_findings: tuple[dict[str, object], ...] = ()
+    authority_profile: str | None = None
+    authority_rank: int | None = None
+    authority_candidates: tuple[str, ...] = ()
 
 
 def authorize_intent(
@@ -55,10 +59,23 @@ def authorize_intent(
 ) -> CourtDecision:
     errors = validate_intent(intent)
     if errors:
-        return _deny("invalid_intent", intent, None, (), (), errors, receipt_sink)
+        return _deny("invalid_intent", intent, None, (), (), None, errors, receipt_sink)
 
     requested_policy_ids = policy_ids_from_context(capability_context)
     policy_set_id = "+".join(requested_policy_ids)
+    authority = resolve_authority(capability_context)
+
+    if not authority.valid:
+        return _deny(
+            authority.state or "authority_unknown",
+            intent,
+            policy_set_id,
+            requested_policy_ids,
+            (),
+            authority,
+            (authority.detail or "authority resolution failed",),
+            receipt_sink,
+        )
 
     if getattr(capability_context, "authorization_required", True) is not True:
         return _deny(
@@ -67,6 +84,7 @@ def authorize_intent(
             policy_set_id,
             requested_policy_ids,
             (),
+            authority,
             ("authorization must be required",),
             receipt_sink,
         )
@@ -79,6 +97,7 @@ def authorize_intent(
             policy_set_id,
             requested_policy_ids,
             (),
+            authority,
             context_errors,
             receipt_sink,
         )
@@ -91,6 +110,7 @@ def authorize_intent(
             policy_set_id,
             requested_policy_ids,
             (),
+            authority,
             ("capability is outside the proposed context",),
             receipt_sink,
         )
@@ -109,6 +129,7 @@ def authorize_intent(
             resolution.policy_set_id,
             resolution.policy_ids,
             findings,
+            authority,
             (resolution.denial_detail or "policy set denied request",),
             receipt_sink,
         )
@@ -120,7 +141,10 @@ def authorize_intent(
         ttl_seconds=resolution.token_ttl_seconds,
         now=now,
     )
-    reason = reason_for_state("authorized", _authorization_details(resolution))
+    reason = reason_for_state(
+        "authorized",
+        _authorization_details(resolution, authority),
+    )
     receipt = _decision_receipt(
         "COURT_AUTHORIZED",
         "authorized",
@@ -128,6 +152,7 @@ def authorize_intent(
         resolution.policy_set_id,
         resolution.policy_ids,
         findings,
+        authority,
         token.token_id,
         (),
         reason,
@@ -135,7 +160,7 @@ def authorize_intent(
     persisted, persist_errors = _persist(receipt, receipt_sink)
     if not persisted:
         failed_reason = reason_for_state("authorization_unreceipted", persist_errors)
-        return CourtDecision(
+        return _decision(
             False,
             "authorization_unreceipted",
             resolution.policy_set_id,
@@ -145,8 +170,9 @@ def authorize_intent(
             failed_reason,
             resolution.policy_ids,
             findings,
+            authority,
         )
-    return CourtDecision(
+    return _decision(
         True,
         "authorized",
         resolution.policy_set_id,
@@ -156,11 +182,19 @@ def authorize_intent(
         reason,
         resolution.policy_ids,
         findings,
+        authority,
     )
 
 
-def _authorization_details(resolution: PolicyResolution) -> tuple[str, ...]:
+def _authorization_details(
+    resolution: PolicyResolution,
+    authority: AuthorityResolution,
+) -> tuple[str, ...]:
     return (
+        "authority '{}' resolved at rank {}".format(
+            authority.selected_profile,
+            authority.selected_rank,
+        ),
         "all {} active policies permitted the request".format(len(resolution.policy_ids)),
         "token lifetime restricted to {} seconds".format(resolution.token_ttl_seconds),
     )
@@ -179,7 +213,16 @@ def _validate_context_binding(intent: Intent, capability_context) -> tuple[str, 
     return tuple(errors)
 
 
-def _deny(state, intent, policy_id, policy_ids, findings, errors, receipt_sink):
+def _deny(
+    state,
+    intent,
+    policy_id,
+    policy_ids,
+    findings,
+    authority,
+    errors,
+    receipt_sink,
+):
     reason = reason_for_state(state, errors)
     receipt = _decision_receipt(
         "COURT_DENIED",
@@ -188,12 +231,13 @@ def _deny(state, intent, policy_id, policy_ids, findings, errors, receipt_sink):
         policy_id,
         policy_ids,
         findings,
+        authority,
         None,
         errors,
         reason,
     )
     persisted, persist_errors = _persist(receipt, receipt_sink)
-    return CourtDecision(
+    return _decision(
         False,
         state,
         policy_id,
@@ -203,6 +247,35 @@ def _deny(state, intent, policy_id, policy_ids, findings, errors, receipt_sink):
         reason,
         tuple(policy_ids),
         tuple(findings),
+        authority,
+    )
+
+
+def _decision(
+    allowed,
+    state,
+    policy_id,
+    token,
+    errors,
+    receipt_persisted,
+    reason,
+    policy_ids,
+    policy_findings,
+    authority,
+):
+    return CourtDecision(
+        allowed=allowed,
+        state=state,
+        policy_id=policy_id,
+        token=token,
+        errors=tuple(errors),
+        receipt_persisted=receipt_persisted,
+        reason=reason,
+        policy_ids=tuple(policy_ids),
+        policy_findings=tuple(policy_findings),
+        authority_profile=(authority.selected_profile if authority else None),
+        authority_rank=(authority.selected_rank if authority else None),
+        authority_candidates=(authority.candidates if authority else ()),
     )
 
 
@@ -213,10 +286,12 @@ def _decision_receipt(
     policy_id,
     policy_ids,
     findings,
+    authority,
     token_id,
     errors,
     reason,
 ):
+    authority_payload = authority.to_dict() if authority else None
     return {
         "event_type": event_type,
         "source": "velvet-runtime",
@@ -231,6 +306,7 @@ def _decision_receipt(
             "session_id": intent.session_id,
             "body_id": intent.body_id,
             "surface": intent.surface,
+            "authority": authority_payload,
             "policy_id": policy_id,
             "policy_ids": list(policy_ids),
             "policy_findings": list(findings),
