@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from services.approved_executor import ExecutorRegistry, ExecutorSpec, execute_authorized
 from services.court_intent import Intent
 from services.court_token import issue_token
+from services.execution_contract import ExecutionContract, ParameterRule
 
 
 def make_token(key):
@@ -66,12 +67,84 @@ class TestApprovedExecutor(unittest.TestCase):
         self.assertEqual(self.registry.names(), ("cabin-comfort",))
         self.assertTrue(self.registry.is_registered("cabin-comfort"))
         self.assertFalse(self.registry.is_registered("missing"))
+        self.assertEqual(
+            self.registry.get("cabin-comfort").contract.contract_id,
+            "runtime.default.v1",
+        )
 
     def test_valid_token_executes_and_receipts(self):
         result = self.run_executor(parameters={"temperature": 21})
         self.assertTrue(result.executed)
+        self.assertEqual(result.contract_id, "runtime.default.v1")
         self.assertEqual([item["event_type"] for item in self.receipts], ["EXECUTION_STARTED", "EXECUTION_COMPLETED"])
+        self.assertEqual(
+            self.receipts[0]["payload"]["execution_contract"]["contract_id"],
+            "runtime.default.v1",
+        )
         self.assertEqual(len(self.calls), 1)
+
+    def test_strict_contract_denies_bad_parameters_before_safety_or_replay(self):
+        safety_calls = []
+        strict = ExecutorRegistry()
+        strict.register(ExecutorSpec(
+            "cabin-comfort",
+            "comfort.request",
+            ("cabin",),
+            self.handle,
+            ExecutionContract(
+                contract_id="cabin-comfort.v1",
+                parameters=(ParameterRule("temperature", "int", True),),
+                allow_extra_parameters=False,
+                idempotency="idempotent",
+                exclusive_resources=("hvac",),
+            ),
+        ))
+        result = self.run_executor(
+            registry=strict,
+            parameters={"temperature": "warm"},
+            safety_check=lambda token, params: safety_calls.append(True) or (True, ""),
+        )
+        self.assertFalse(result.executed)
+        self.assertEqual(result.state, "execution_contract_denied")
+        self.assertEqual(result.contract_id, "cabin-comfort.v1")
+        self.assertEqual(safety_calls, [])
+        self.assertNotIn(self.token.token_id, self.used)
+        self.assertEqual(self.calls, [])
+        self.assertEqual(self.receipts[0]["event_type"], "EXECUTION_DENIED")
+        self.assertEqual(
+            self.receipts[0]["payload"]["execution_contract"]["exclusive_resources"],
+            ["hvac"],
+        )
+
+    def test_completion_state_mismatch_is_receipted_as_failure(self):
+        registry = ExecutorRegistry()
+        registry.register(ExecutorSpec(
+            "cabin-comfort",
+            "comfort.request",
+            ("cabin",),
+            lambda params: {"state": "completed", "actuation_performed": False},
+            ExecutionContract(
+                contract_id="cabin-comfort.accepted.v1",
+                expected_completion_state="accepted",
+            ),
+        ))
+        result = self.run_executor(registry=registry)
+        self.assertFalse(result.executed)
+        self.assertEqual(result.state, "contract_completion_mismatch")
+        self.assertEqual(
+            [item["event_type"] for item in self.receipts],
+            ["EXECUTION_STARTED", "EXECUTION_FAILED"],
+        )
+
+    def test_invalid_contract_is_rejected_at_registration(self):
+        with self.assertRaisesRegex(ValueError, "cannot retry"):
+            self.registry.register(ExecutorSpec(
+                "unsafe-retry",
+                "comfort.request",
+                ("cabin",),
+                self.handle,
+                ExecutionContract(idempotency="non_idempotent", max_retries=1),
+            ))
 
     def test_replay_is_denied(self):
         self.used.add(self.token.token_id)
