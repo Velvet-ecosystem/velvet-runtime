@@ -11,6 +11,8 @@ class TestCourtReasons(unittest.TestCase):
             "authorized": CourtReasonCode.POLICY_MATCH,
             "invalid_intent": CourtReasonCode.INVALID_INTENT,
             "invalid_capability_context": CourtReasonCode.AUTHORIZATION_REQUIRED,
+            "authority_conflict": CourtReasonCode.AUTHORITY_CONFLICT,
+            "authority_unknown": CourtReasonCode.AUTHORITY_UNKNOWN,
             "context_mismatch": CourtReasonCode.CONTEXT_MISMATCH,
             "capability_not_proposed": CourtReasonCode.CAPABILITY_NOT_PROPOSED,
             "policy_denied": CourtReasonCode.POLICY_DENIED,
