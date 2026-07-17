@@ -55,7 +55,7 @@ class TestCoordinatedExecutor(unittest.TestCase):
         self.calls.append(dict(params))
         return {"actuation_performed": False}
 
-    def run(self, **overrides):
+    def run_executor(self, **overrides):
         values = {
             "token": self.token,
             "executor_name": "cabin-comfort",
@@ -72,7 +72,7 @@ class TestCoordinatedExecutor(unittest.TestCase):
         return execute_coordinated(**values)
 
     def test_success_acquires_executes_and_releases(self):
-        result = self.run()
+        result = self.run_executor()
         self.assertTrue(result.executed)
         self.assertEqual(
             [item["event_type"] for item in self.receipts],
@@ -90,7 +90,7 @@ class TestCoordinatedExecutor(unittest.TestCase):
     def test_conflict_denies_before_safety_and_token_consumption(self):
         safety_calls = []
         self.coordinator.acquire(owner_id="execution:other", resources=("hvac",))
-        result = self.run(
+        result = self.run_executor(
             safety_check=lambda token, params: safety_calls.append(True) or (True, ""),
         )
         self.assertFalse(result.executed)
@@ -102,7 +102,7 @@ class TestCoordinatedExecutor(unittest.TestCase):
         self.assertIn("execution:other", result.errors[0])
 
     def test_safety_denial_releases_lease(self):
-        result = self.run(safety_check=lambda token, params: (False, "unsafe"))
+        result = self.run_executor(safety_check=lambda token, params: (False, "unsafe"))
         self.assertFalse(result.executed)
         self.assertEqual(result.state, "safety_denied")
         self.assertEqual(
@@ -118,7 +118,7 @@ class TestCoordinatedExecutor(unittest.TestCase):
                 raise OSError("disk unavailable")
             self.receipts.append(receipt)
 
-        result = self.run(receipt_sink=fail_on_acquire)
+        result = self.run_executor(receipt_sink=fail_on_acquire)
         self.assertFalse(result.executed)
         self.assertEqual(result.state, "resource_receipt_unpersisted")
         self.assertEqual(self.calls, [])
@@ -137,7 +137,7 @@ class TestCoordinatedExecutor(unittest.TestCase):
                 exclusive_resources=("hvac",),
             ),
         ))
-        result = self.run(registry=registry)
+        result = self.run_executor(registry=registry)
         self.assertFalse(result.executed)
         self.assertEqual(result.state, "executor_failed")
         self.assertEqual(self.receipts[-1]["event_type"], "RESOURCE_RELEASED")
@@ -149,7 +149,7 @@ class TestCoordinatedExecutor(unittest.TestCase):
             if receipt["event_type"] == "RESOURCE_RELEASED":
                 raise OSError("disk unavailable")
 
-        result = self.run(receipt_sink=fail_on_release)
+        result = self.run_executor(receipt_sink=fail_on_release)
         self.assertTrue(result.executed)
         self.assertEqual(result.state, "resource_release_unreceipted")
         self.assertIn("resource-release receipt", result.errors[-1])
@@ -163,7 +163,7 @@ class TestCoordinatedExecutor(unittest.TestCase):
             ("cabin",),
             self.handle,
         ))
-        result = self.run(registry=registry)
+        result = self.run_executor(registry=registry)
         self.assertTrue(result.executed)
         self.assertEqual(
             [item["event_type"] for item in self.receipts],
