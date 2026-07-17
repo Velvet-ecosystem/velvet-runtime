@@ -1,18 +1,23 @@
 # SPDX-License-Identifier: GPL-3.0-only
 """Policy decision layer for Court authorization.
 
-This module validates intent, checks one active policy, persists a decision
-receipt, and may issue a bounded capability token. It never calls executors.
+This module validates intent, resolves one ordered active policy set, persists a
+decision receipt, and may issue a bounded capability token. It never calls
+executors.
 """
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
 from services.court_intent import Intent, validate_intent
+from services.court_policy_resolution import (
+    PolicyResolution,
+    policy_ids_from_context,
+    resolve_policy_set,
+)
 from services.court_reasons import CourtReason, reason_for_state
 from services.court_token import CapabilityToken, issue_token
 
@@ -35,6 +40,8 @@ class CourtDecision:
     errors: tuple[str, ...]
     receipt_persisted: bool
     reason: CourtReason
+    policy_ids: tuple[str, ...] = ()
+    policy_findings: tuple[dict[str, object], ...] = ()
 
 
 def authorize_intent(
@@ -48,40 +55,82 @@ def authorize_intent(
 ) -> CourtDecision:
     errors = validate_intent(intent)
     if errors:
-        return _deny("invalid_intent", intent, None, errors, receipt_sink)
+        return _deny("invalid_intent", intent, None, (), (), errors, receipt_sink)
 
-    policy = _select_policy(Path(policy_path), capability_context.policy_id)
-    policy_id = _text(policy.get("policy_id"))
+    requested_policy_ids = policy_ids_from_context(capability_context)
+    policy_set_id = "+".join(requested_policy_ids)
 
     if getattr(capability_context, "authorization_required", True) is not True:
-        return _deny("invalid_capability_context", intent, policy_id, ("authorization must be required",), receipt_sink)
+        return _deny(
+            "invalid_capability_context",
+            intent,
+            policy_set_id,
+            requested_policy_ids,
+            (),
+            ("authorization must be required",),
+            receipt_sink,
+        )
 
     context_errors = _validate_context_binding(intent, capability_context)
     if context_errors:
-        return _deny("context_mismatch", intent, policy_id, context_errors, receipt_sink)
+        return _deny(
+            "context_mismatch",
+            intent,
+            policy_set_id,
+            requested_policy_ids,
+            (),
+            context_errors,
+            receipt_sink,
+        )
 
     proposed = set(getattr(capability_context, "proposed_capabilities", ()))
     if intent.capability not in proposed:
-        return _deny("capability_not_proposed", intent, policy_id, ("capability is outside the proposed context",), receipt_sink)
+        return _deny(
+            "capability_not_proposed",
+            intent,
+            policy_set_id,
+            requested_policy_ids,
+            (),
+            ("capability is outside the proposed context",),
+            receipt_sink,
+        )
 
-    allowed_capabilities = {_text(value) for value in policy.get("allowed_capabilities", [])}
-    if intent.capability not in allowed_capabilities:
-        return _deny("policy_denied", intent, policy_id, ("policy denied capability",), receipt_sink)
-
-    allowed_targets = {_text(value) for value in policy.get("allowed_targets", [])}
-    if "*" not in allowed_targets and intent.target not in allowed_targets:
-        return _deny("target_denied", intent, policy_id, ("policy denied target",), receipt_sink)
+    resolution = resolve_policy_set(
+        policy_path=Path(policy_path),
+        requested_policy_ids=requested_policy_ids,
+        capability=intent.capability,
+        target=intent.target,
+    )
+    findings = tuple(item.to_dict() for item in resolution.findings)
+    if not resolution.allowed:
+        return _deny(
+            resolution.denial_state or "policy_denied",
+            intent,
+            resolution.policy_set_id,
+            resolution.policy_ids,
+            findings,
+            (resolution.denial_detail or "policy set denied request",),
+            receipt_sink,
+        )
 
     token = issue_token(
         intent=intent,
-        policy_id=policy_id,
+        policy_id=resolution.policy_set_id,
         signing_key=signing_key,
-        ttl_seconds=policy.get("token_ttl_seconds", 30),
+        ttl_seconds=resolution.token_ttl_seconds,
         now=now,
     )
-    reason = reason_for_state("authorized")
+    reason = reason_for_state("authorized", _authorization_details(resolution))
     receipt = _decision_receipt(
-        "COURT_AUTHORIZED", "authorized", intent, policy_id, token.token_id, (), reason
+        "COURT_AUTHORIZED",
+        "authorized",
+        intent,
+        resolution.policy_set_id,
+        resolution.policy_ids,
+        findings,
+        token.token_id,
+        (),
+        reason,
     )
     persisted, persist_errors = _persist(receipt, receipt_sink)
     if not persisted:
@@ -89,13 +138,32 @@ def authorize_intent(
         return CourtDecision(
             False,
             "authorization_unreceipted",
-            policy_id,
+            resolution.policy_set_id,
             None,
             persist_errors,
             False,
             failed_reason,
+            resolution.policy_ids,
+            findings,
         )
-    return CourtDecision(True, "authorized", policy_id, token, (), True, reason)
+    return CourtDecision(
+        True,
+        "authorized",
+        resolution.policy_set_id,
+        token,
+        (),
+        True,
+        reason,
+        resolution.policy_ids,
+        findings,
+    )
+
+
+def _authorization_details(resolution: PolicyResolution) -> tuple[str, ...]:
+    return (
+        "all {} active policies permitted the request".format(len(resolution.policy_ids)),
+        "token lifetime restricted to {} seconds".format(resolution.token_ttl_seconds),
+    )
 
 
 def _validate_context_binding(intent: Intent, capability_context) -> tuple[str, ...]:
@@ -111,9 +179,19 @@ def _validate_context_binding(intent: Intent, capability_context) -> tuple[str, 
     return tuple(errors)
 
 
-def _deny(state, intent, policy_id, errors, receipt_sink):
+def _deny(state, intent, policy_id, policy_ids, findings, errors, receipt_sink):
     reason = reason_for_state(state, errors)
-    receipt = _decision_receipt("COURT_DENIED", state, intent, policy_id, None, errors, reason)
+    receipt = _decision_receipt(
+        "COURT_DENIED",
+        state,
+        intent,
+        policy_id,
+        policy_ids,
+        findings,
+        None,
+        errors,
+        reason,
+    )
     persisted, persist_errors = _persist(receipt, receipt_sink)
     return CourtDecision(
         False,
@@ -123,10 +201,22 @@ def _deny(state, intent, policy_id, errors, receipt_sink):
         tuple(errors) + persist_errors,
         persisted,
         reason,
+        tuple(policy_ids),
+        tuple(findings),
     )
 
 
-def _decision_receipt(event_type, state, intent, policy_id, token_id, errors, reason):
+def _decision_receipt(
+    event_type,
+    state,
+    intent,
+    policy_id,
+    policy_ids,
+    findings,
+    token_id,
+    errors,
+    reason,
+):
     return {
         "event_type": event_type,
         "source": "velvet-runtime",
@@ -142,27 +232,14 @@ def _decision_receipt(event_type, state, intent, policy_id, token_id, errors, re
             "body_id": intent.body_id,
             "surface": intent.surface,
             "policy_id": policy_id,
+            "policy_ids": list(policy_ids),
+            "policy_findings": list(findings),
             "token_id": token_id,
             "errors": list(errors),
             "execution_performed": False,
             "actuation_performed": False,
         },
     }
-
-
-def _select_policy(path: Path, policy_id: str) -> dict[str, Any]:
-    if not path.is_file():
-        raise FileNotFoundError(f"Court policy not found: {path}")
-    document = json.loads(path.read_text(encoding="utf-8"))
-    if document.get("schema") != "velvet.court.policy.v1":
-        raise ValueError("unsupported Court policy schema")
-    policies = document.get("policies")
-    if not isinstance(policies, list):
-        raise ValueError("Court policy requires a policies list")
-    selected = [item for item in policies if isinstance(item, dict) and item.get("policy_id") == policy_id and item.get("status") == "active"]
-    if len(selected) != 1:
-        raise ValueError("Court requires exactly one active matching policy")
-    return selected[0]
 
 
 def _persist(receipt, sink):
