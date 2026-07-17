@@ -132,7 +132,6 @@ def execute_coordinated(
         )
 
     result = None
-    release = None
     try:
         result = execute_authorized(
             token=token,
@@ -145,7 +144,6 @@ def execute_coordinated(
             used_token_ids=used_token_ids,
             now=now,
         )
-        return result
     finally:
         release = resource_coordinator.release(owner_id=owner_id)
         released_persisted = _persist(
@@ -168,6 +166,10 @@ def execute_coordinated(
                 else "resource-release receipt could not be persisted",
             )
             result = replace(result, state=state, errors=errors)
+
+    if result is None:
+        raise RuntimeError("coordinated execution completed without a result")
+    return result
 
 
 def _preflight(
