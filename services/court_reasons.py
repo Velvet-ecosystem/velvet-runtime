@@ -12,6 +12,8 @@ class CourtReasonCode(str, Enum):
     POLICY_MATCH = "POLICY_MATCH"
     INVALID_INTENT = "INVALID_INTENT"
     AUTHORIZATION_REQUIRED = "AUTHORIZATION_REQUIRED"
+    AUTHORITY_CONFLICT = "AUTHORITY_CONFLICT"
+    AUTHORITY_UNKNOWN = "AUTHORITY_UNKNOWN"
     CONTEXT_MISMATCH = "CONTEXT_MISMATCH"
     CAPABILITY_NOT_PROPOSED = "CAPABILITY_NOT_PROPOSED"
     POLICY_DENIED = "POLICY_DENIED"
@@ -39,6 +41,14 @@ _STATE_REASONS = {
     "invalid_capability_context": (
         CourtReasonCode.AUTHORIZATION_REQUIRED,
         "The active capability context did not require Court authorization.",
+    ),
+    "authority_conflict": (
+        CourtReasonCode.AUTHORITY_CONFLICT,
+        "The active authority identity conflicted with the Court hierarchy.",
+    ),
+    "authority_unknown": (
+        CourtReasonCode.AUTHORITY_UNKNOWN,
+        "Court could not recognize a verified authority identity.",
     ),
     "context_mismatch": (
         CourtReasonCode.CONTEXT_MISMATCH,
