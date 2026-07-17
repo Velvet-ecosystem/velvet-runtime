@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from services.court_intent import Intent, validate_intent
+from services.court_reasons import CourtReason, reason_for_state
 from services.court_token import CapabilityToken, issue_token
 
 
@@ -33,6 +34,7 @@ class CourtDecision:
     token: CapabilityToken | None
     errors: tuple[str, ...]
     receipt_persisted: bool
+    reason: CourtReason
 
 
 def authorize_intent(
@@ -77,11 +79,23 @@ def authorize_intent(
         ttl_seconds=policy.get("token_ttl_seconds", 30),
         now=now,
     )
-    receipt = _decision_receipt("COURT_AUTHORIZED", "authorized", intent, policy_id, token.token_id, ())
+    reason = reason_for_state("authorized")
+    receipt = _decision_receipt(
+        "COURT_AUTHORIZED", "authorized", intent, policy_id, token.token_id, (), reason
+    )
     persisted, persist_errors = _persist(receipt, receipt_sink)
     if not persisted:
-        return CourtDecision(False, "authorization_unreceipted", policy_id, None, persist_errors, False)
-    return CourtDecision(True, "authorized", policy_id, token, (), True)
+        failed_reason = reason_for_state("authorization_unreceipted", persist_errors)
+        return CourtDecision(
+            False,
+            "authorization_unreceipted",
+            policy_id,
+            None,
+            persist_errors,
+            False,
+            failed_reason,
+        )
+    return CourtDecision(True, "authorized", policy_id, token, (), True, reason)
 
 
 def _validate_context_binding(intent: Intent, capability_context) -> tuple[str, ...]:
@@ -98,18 +112,28 @@ def _validate_context_binding(intent: Intent, capability_context) -> tuple[str, 
 
 
 def _deny(state, intent, policy_id, errors, receipt_sink):
-    receipt = _decision_receipt("COURT_DENIED", state, intent, policy_id, None, errors)
+    reason = reason_for_state(state, errors)
+    receipt = _decision_receipt("COURT_DENIED", state, intent, policy_id, None, errors, reason)
     persisted, persist_errors = _persist(receipt, receipt_sink)
-    return CourtDecision(False, state, policy_id, None, tuple(errors) + persist_errors, persisted)
+    return CourtDecision(
+        False,
+        state,
+        policy_id,
+        None,
+        tuple(errors) + persist_errors,
+        persisted,
+        reason,
+    )
 
 
-def _decision_receipt(event_type, state, intent, policy_id, token_id, errors):
+def _decision_receipt(event_type, state, intent, policy_id, token_id, errors, reason):
     return {
         "event_type": event_type,
         "source": "velvet-runtime",
         "subject_id": intent.profile_id or "unknown",
         "payload": {
             "state": state,
+            "reason": reason.to_dict(),
             "intent_id": intent.intent_id,
             "capability": intent.capability,
             "target": intent.target,
