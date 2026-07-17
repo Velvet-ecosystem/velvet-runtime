@@ -1,14 +1,14 @@
 # velvet-runtime
 
-The local bootstrap, identity, authorization, safety, and execution-wiring layer for the Velvet AI ecosystem.
+The local identity, authorization, safety, execution-contract, resource-coordination, and receipt-wiring layer for the Velvet AI ecosystem.
 
 Velvet Runtime is designed for the Founder UP Squared and other Linux surfaces, with contracts portable across vehicle, home, forge, industrial, mobile, and subordinate-node deployments.
 
-> Runtime wires. Policy authorizes. Gates enforce. Executors act. Receipts remember.
+> Runtime wires. Court authorizes. Contracts narrow. Traffic control coordinates. Gates enforce. Executors act. Receipts remember.
 
 ## Current Status
 
-The secure request spine is implemented from boot identity through four read-only observation executors.
+The secure request spine is implemented from boot identity through four read-only observation executors, with deterministic Court reasoning and coordinated execution foundations now in place.
 
 Current physical authority: **none**.
 
@@ -18,11 +18,17 @@ Runtime currently provides:
 - active body-registry binding
 - profile and session binding
 - bounded capability-context proposals
-- Court authorization with short-lived signed tokens
+- explicit Court authority hierarchy
+- deterministic multi-policy resolution
+- stable machine-readable Court reason codes
+- short-lived signed capability tokens
+- typed execution contracts
 - named safety-gate registration
 - manifest-bound approved executors
+- exclusive-resource coordination
+- coordinated acquisition and guaranteed release
 - cross-process persistent replay protection
-- canonical Court, safety, and execution receipts
+- canonical Court, resource, safety, and execution receipts
 - a narrow local intent gateway
 - four read-only routes and executors:
   - `runtime-status`
@@ -47,20 +53,30 @@ input
   -> verified identity context
   -> strict intent
   -> capability context
-  -> Court authorization
+  -> authority hierarchy
+  -> multi-policy Court authorization
+  -> structured Court reason
   -> signed capability token
   -> approved executor lookup
-  -> replay check
+  -> execution contract validation
+  -> exclusive-resource acquisition
+  -> RESOURCE_ACQUIRED receipt
   -> named safety gate
   -> execution-start receipt
+  -> replay consumption
   -> named handler
-  -> final receipt
+  -> final execution receipt
+  -> resource release
+  -> RESOURCE_RELEASED receipt
 ```
+
+Executors that claim no exclusive resources preserve the shorter approved-executor path and do not emit resource receipts.
 
 ```text
 no valid receipt = deny actuation
 no verified physical presence = deny privilege elevation
 no trusted signature = reject update
+no complete resource lease = deny coordinated execution
 ```
 
 Remote access may observe or request, but it never equals local physical presence.
@@ -74,6 +90,7 @@ base runtime wiring
   -> continuity receipt
   -> Court pipeline provisioning
   -> read-only executor and gate registration
+  -> shared resource coordinator
   -> module loading
   -> local observation route construction
   -> optional interface lifecycle
@@ -100,6 +117,23 @@ Velvet keeps system, surface, body, profile, session, physical presence, address
 
 A name is not permission. A route is not permission. A receipt is evidence, not permission.
 
+The current authority hierarchy is:
+
+```text
+emergency
+  > medical
+  > owner
+  > service
+  > guest
+  > oem
+  > remote
+  > unknown
+```
+
+This hierarchy resolves verified identity precedence only. It does not grant capabilities or bypass Court policy, safety gates, replay protection, or receipts.
+
+See [Court Authority Hierarchy](docs/court_authority_hierarchy.md).
+
 ## Continuity
 
 Continuity verifies lineage, active surface, and body binding. It does not actuate hardware and does not independently grant policy authority.
@@ -115,7 +149,60 @@ See:
 
 Court accepts strict normalized intents bound to verified profile, session, body, surface, capability, and target. Approved requests receive short-lived signed capability tokens. Court never invokes executors directly.
 
-See [Court Authorization Contract](docs/court_authorization_contract.md).
+Court may resolve an ordered policy set. Every selected policy must permit both the requested capability and target. One denial blocks the complete set, and the shortest token lifetime wins.
+
+Every decision carries a stable machine-readable reason code, a human-readable summary, and supporting details. Court receipts preserve the same explanation.
+
+See:
+
+- [Court Authorization Contract](docs/court_authorization_contract.md)
+- [Court Reason Engine](docs/court_reason_engine.md)
+- [Court Multi-Policy Resolution](docs/court_multi_policy_resolution.md)
+- [Court Authority Hierarchy](docs/court_authority_hierarchy.md)
+
+## Execution Contracts
+
+Every approved executor carries a typed execution contract. The contract may define:
+
+- permitted parameter names and types
+- required parameters and extra-parameter policy
+- idempotency
+- retry limits
+- cancellation support
+- exclusive resources
+- expected completion state
+- mandatory receipt types
+
+Parameter validation occurs before resource acquisition, the safety gate, replay consumption, or the executor call.
+
+Existing executors remain compatible through the conservative `runtime.default.v1` contract and may be tightened individually.
+
+Retry orchestration, cancellation dispatch, and resource scheduling are not implied merely because a contract records those properties.
+
+See [Runtime Execution Contract](docs/execution_contract.md).
+
+## Resource Coordination
+
+Execution contracts may claim exclusive resources such as:
+
+```text
+can-bus
+hvac
+audio
+steering
+brakes
+microphones
+cameras
+storage
+```
+
+The shared Resource Coordinator grants complete resource sets atomically. A request receives every declared resource or none of them. Conflicts name both the resource and its current execution owner.
+
+Once a lease is acquired and receipted, release occurs through one guaranteed cleanup lane after success, safety denial, replay failure, missing receipts, completion mismatch, or executor exception.
+
+Current coordination is local and in-memory. It does not yet provide queues, lease timeouts, emergency preemption, priority inheritance, cross-process persistence, or dead-owner recovery.
+
+See [Runtime Resource Coordination](docs/resource_coordination.md).
 
 ## Safety Gates
 
@@ -139,9 +226,9 @@ See [Safety Gate Registry](docs/safety_gate_registry.md).
 
 ## Approved Executors and Manifests
 
-Only explicitly registered executors may run. Each executor declares its name, version, capability, targets, named safety gate, read-only status, and parameter schema.
+Only explicitly registered executors may run. Each executor declares its name, version, capability, targets, named safety gate, read-only status, parameter schema, and execution contract.
 
-The execution layer verifies token signature and expiry, executor binding, replay status, safety approval, and persistence of the execution-start receipt.
+The execution layer verifies token signature and expiry, executor binding, parameter contract, resource availability, safety approval, replay status, and persistence of required receipts.
 
 No arbitrary import path, shell command, client-supplied callable, or client-selected executor is authority.
 
@@ -150,6 +237,29 @@ See:
 - [Approved Executor Contract](docs/approved_executor_contract.md)
 - [Executor Manifest Contract](docs/executor_manifest_contract.md)
 - [Runtime Execution Pipeline](docs/runtime_execution_pipeline.md)
+- [Runtime Execution Contract](docs/execution_contract.md)
+- [Runtime Resource Coordination](docs/resource_coordination.md)
+
+## Receipt Families
+
+Runtime currently emits and preserves structured evidence including:
+
+```text
+COURT_AUTHORIZED
+COURT_DENIED
+RESOURCE_ACQUIRED
+RESOURCE_DENIED
+RESOURCE_RELEASED
+RESOURCE_RELEASE_FAILED
+EXECUTION_STARTED
+EXECUTION_COMPLETED
+EXECUTION_FAILED
+EXECUTION_DENIED
+```
+
+Resource and execution receipts carry the token, intent, executor, target, and normalized execution-contract context needed to reconstruct the decision path.
+
+A successful physical action must never be rewritten as though it did not occur merely because a later receipt failed. Runtime instead marks the result degraded and preserves the known execution outcome.
 
 ## Read-Only Observation Routes
 
@@ -225,6 +335,7 @@ Startup assembles:
 - canonical execution receipt sink
 - executor registry containing four read-only observers
 - safety registry containing their four read-only gates
+- shared resource coordinator
 
 The signing key must already exist locally and contain at least 32 bytes. Runtime does not generate, print, or commit it.
 
@@ -289,10 +400,18 @@ velvet-runtime/
 ├── config/
 ├── services/
 │   ├── continuity_activation.py
+│   ├── capability_context.py
+│   ├── court_authority.py
 │   ├── court_authorization.py
+│   ├── court_policy_resolution.py
+│   ├── court_reasons.py
+│   ├── court_token.py
+│   ├── execution_contract.py
 │   ├── safety_gate_registry.py
 │   ├── executor_manifest.py
 │   ├── approved_executor.py
+│   ├── resource_coordinator.py
+│   ├── coordinated_executor.py
 │   ├── token_replay_ledger.py
 │   ├── runtime_pipeline.py
 │   ├── pipeline_provisioning.py
@@ -309,7 +428,7 @@ velvet-runtime/
 
 ## Module Boundary
 
-Modules are trusted local plugins reviewed before deployment. They receive only the hardened publishing interface approved by the module loader. They do not receive the Court pipeline, executor registry, safety registry, or hardware handles.
+Modules are trusted local plugins reviewed before deployment. They receive only the hardened publishing interface approved by the module loader. They do not receive the Court pipeline, executor registry, safety registry, resource coordinator, or hardware handles.
 
 The current Python boundary provides interface hygiene, not a malicious-code sandbox. Untrusted plugins require process isolation and IPC.
 
@@ -327,20 +446,29 @@ After roughly three to five feature PRs, or before introducing a new authority b
 
 ## Completed Foundation
 
-- Development-state bootstrap for a bounded read-only launch
-- One-command development Runtime start
+- development-state bootstrap for a bounded read-only launch
+- one-command development Runtime start
 - UP² systemd deployment recipe
 - visible Interface boot-status window
 - Python 3.8 baseline capability contract
 - frozen UP² first-wake candidate and Python 3.8 baseline candidate
 - four read-only observation routes with Court, gates, executors, and receipts
+- stable Court reason engine
+- restrictive multi-policy resolution
+- explicit authority hierarchy
+- typed execution contracts
+- atomic exclusive-resource coordination
+- live coordinated executor integration with guaranteed release
 
 ## Next Milestones
 
-1. Validate the Python 3.8 baseline candidate on the physical UP² and preserve the evidence bundle.
-2. Keep Interface scenes bounded to the same read-only routes and capability reports.
-3. Add cross-repo compatibility reporting to startup diagnostics.
-4. Design the first low-risk physical executor only after explicit local deployment review.
+1. Build bounded Execution Sessions for multi-step operations with one coherent timeline.
+2. Add resource lease timeouts, heartbeats, and dead-owner recovery.
+3. Design bounded wait queues and cancellation behavior.
+4. Define doctrine-governed emergency preemption and priority inheritance.
+5. Add cross-repo compatibility reporting to startup diagnostics.
+6. Validate the Python 3.8 baseline candidate on the physical UP² and preserve the evidence bundle.
+7. Design the first low-risk physical executor only after explicit local deployment review.
 
 ## Security Posture
 
@@ -348,7 +476,7 @@ Velvet Runtime is offline-first, local-API-first, CLI-accessible, and cloud-opti
 
 The offline language model remains behind the local request boundary as a reasoning engine. It must never directly control shell access, files, relays, CAN, actuators, or hardware.
 
-The brain proposes. The Court authorizes. Executors act. Receipts remember.
+The brain proposes. Court authorizes. Contracts narrow. Runtime coordinates. Executors act. Receipts remember.
 
 ## License
 
