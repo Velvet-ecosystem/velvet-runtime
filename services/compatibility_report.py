@@ -36,6 +36,15 @@ _COMPONENTS: Tuple[Tuple[str, str, bool], ...] = (
     ("continuity-spine", "continuity_spine", False),
 )
 
+_DISTRIBUTIONS = {
+    "event-protocol": "velvet-event-protocol",
+    "receipts": "velvet-receipts",
+    "ai-core": "velvet-ai-core",
+    "vehicle-can": "velvet-vehicle-can",
+    "interface": "velvet-interface",
+    "continuity-spine": "velvet-continuity-spine",
+}
+
 _CONTRACTS = {
     "vehicle-can": (
         "velvet.can.observation.v1",
@@ -68,23 +77,61 @@ def build_compatibility_report(
     }
 
 
+def _distribution_version(component: str, module: str) -> Optional[str]:
+    candidates = tuple(
+        dict.fromkeys(
+            candidate
+            for candidate in (
+                _DISTRIBUTIONS.get(component),
+                module.replace("_", "-"),
+                module,
+            )
+            if candidate
+        )
+    )
+    for candidate in candidates:
+        try:
+            return metadata.version(candidate)
+        except metadata.PackageNotFoundError:
+            continue
+    return None
+
+
+def _module_available(component: str, module: str) -> bool:
+    """Probe module availability across import and distribution identities.
+
+    Editable installs and namespace-package finders can expose an installed
+    distribution while ``find_spec`` reports ``None`` in a particular process.
+    Runtime therefore checks the import spec, then a bounded import, and finally
+    the component's explicit distribution identity. This remains read-only and
+    does not initialize the component or grant authority.
+    """
+
+    try:
+        if importlib.util.find_spec(module) is not None:
+            return True
+    except (ImportError, AttributeError, ValueError):
+        pass
+
+    try:
+        import_module(module)
+        return True
+    except (ImportError, AttributeError, ValueError):
+        pass
+
+    return _distribution_version(component, module) is not None
+
+
 def _probe(component: str, module: str, required: bool) -> ComponentProbe:
     contract = _CONTRACTS.get(component)
     contract_name = contract[0] if contract is not None else None
-    try:
-        available = importlib.util.find_spec(module) is not None
-    except (ImportError, AttributeError, ValueError) as exc:
-        return ComponentProbe(
-            component, module, required, False, False, None, contract_name, (),
-            "module probe failed: {}".format(exc),
-        )
-    if not available:
+    if not _module_available(component, module):
         return ComponentProbe(
             component, module, required, False, False, None, contract_name, (),
             "module not installed",
         )
 
-    version = _module_version(module)
+    version = _distribution_version(component, module)
     missing_symbols = _missing_contract_symbols(module, contract)
     compatible = not missing_symbols
     version_detail = "available" if version is None else "available, version {}".format(version)
@@ -120,13 +167,3 @@ def _missing_contract_symbols(module: str, contract) -> Tuple[str, ...]:
     except (ImportError, AttributeError, ValueError):
         return tuple(required_symbols)
     return tuple(symbol for symbol in required_symbols if not hasattr(imported, symbol))
-
-
-def _module_version(module: str) -> Optional[str]:
-    candidates = (module.replace("_", "-"), module)
-    for candidate in candidates:
-        try:
-            return metadata.version(candidate)
-        except metadata.PackageNotFoundError:
-            continue
-    return None
