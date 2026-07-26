@@ -45,6 +45,27 @@ class CompatibilityReportTests(unittest.TestCase):
         self.assertEqual(component["version"], "0.1.2")
         self.assertEqual(report["optional_missing"], [])
 
+    def test_continuity_spine_distribution_fallback_uses_real_distribution_name(self):
+        components = (("continuity-spine", "continuity_spine", False),)
+
+        def version_lookup(name):
+            if name == "velvet-continuity-spine":
+                return "0.1.2"
+            raise __import__("importlib").metadata.PackageNotFoundError(name)
+
+        with patch("services.compatibility_report.importlib.util.find_spec", return_value=None), patch(
+            "services.compatibility_report.import_module", side_effect=ImportError("namespace finder unavailable")
+        ), patch("services.compatibility_report.metadata.version", side_effect=version_lookup) as version_mock:
+            report = build_compatibility_report(components)
+
+        component = report["components"][0]
+        self.assertTrue(component["available"])
+        self.assertTrue(component["compatible"])
+        self.assertEqual(component["version"], "0.1.2")
+        self.assertEqual(component["detail"], "available, version 0.1.2")
+        self.assertEqual(version_mock.call_args_list[0].args[0], "velvet-continuity-spine")
+        self.assertEqual(report["optional_missing"], [])
+
     def test_vehicle_can_contract_is_reported_when_satisfied(self):
         module = types.SimpleNamespace(
             CAN_OBSERVATION_SCHEMA="velvet.can.observation.v1",
