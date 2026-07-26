@@ -32,6 +32,19 @@ class CompatibilityReportTests(unittest.TestCase):
         self.assertEqual(component["version"], "1.2.3")
         self.assertIn("1.2.3", component["detail"])
 
+    def test_importable_editable_namespace_is_available_when_find_spec_is_none(self):
+        components = (("continuity-spine", "continuity_spine", False),)
+        module = types.ModuleType("continuity_spine")
+        with patch("services.compatibility_report.importlib.util.find_spec", return_value=None), patch(
+            "services.compatibility_report.import_module", return_value=module
+        ), patch("services.compatibility_report.metadata.version", return_value="0.1.2"):
+            report = build_compatibility_report(components)
+        component = report["components"][0]
+        self.assertTrue(component["available"])
+        self.assertTrue(component["compatible"])
+        self.assertEqual(component["version"], "0.1.2")
+        self.assertEqual(report["optional_missing"], [])
+
     def test_vehicle_can_contract_is_reported_when_satisfied(self):
         module = types.SimpleNamespace(
             CAN_OBSERVATION_SCHEMA="velvet.can.observation.v1",
