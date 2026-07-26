@@ -68,17 +68,32 @@ def build_compatibility_report(
     }
 
 
+def _module_available(module: str) -> bool:
+    """Probe module availability without trusting find_spec alone.
+
+    Editable installs and namespace-package finders can expose an importable
+    module while ``find_spec`` reports ``None`` in some environments. A real
+    import is therefore used as a bounded fallback. Compatibility contracts
+    remain responsible for checking any required public symbols.
+    """
+
+    try:
+        if importlib.util.find_spec(module) is not None:
+            return True
+    except (ImportError, AttributeError, ValueError):
+        pass
+
+    try:
+        import_module(module)
+    except (ImportError, AttributeError, ValueError):
+        return False
+    return True
+
+
 def _probe(component: str, module: str, required: bool) -> ComponentProbe:
     contract = _CONTRACTS.get(component)
     contract_name = contract[0] if contract is not None else None
-    try:
-        available = importlib.util.find_spec(module) is not None
-    except (ImportError, AttributeError, ValueError) as exc:
-        return ComponentProbe(
-            component, module, required, False, False, None, contract_name, (),
-            "module probe failed: {}".format(exc),
-        )
-    if not available:
+    if not _module_available(module):
         return ComponentProbe(
             component, module, required, False, False, None, contract_name, (),
             "module not installed",
