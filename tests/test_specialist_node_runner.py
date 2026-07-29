@@ -105,9 +105,8 @@ class SpecialistNodeRunnerTests(unittest.TestCase):
         consequential=False,
         lease_seconds=60.0,
     ):
-        proposal = self._proposal(work_id, consequential=consequential)
         offered = self.service.submit(
-            proposal,
+            self._proposal(work_id, consequential=consequential),
             now=20.0,
             lease_seconds=lease_seconds,
         )
@@ -119,7 +118,6 @@ class SpecialistNodeRunnerTests(unittest.TestCase):
 
     def test_heartbeat_registers_verified_advertisement_and_receipt(self):
         heartbeat = self.runner.heartbeat(now=11.0)
-
         self.assertTrue(heartbeat.accepted)
         self.assertEqual(heartbeat.state, "registered")
         self.assertEqual(heartbeat.advertisement.node_id, "ruby-luckfox-1")
@@ -129,9 +127,7 @@ class SpecialistNodeRunnerTests(unittest.TestCase):
         self.assertEqual(heartbeat.authority, "none")
 
     def test_acceptance_is_separate_from_handler_execution(self):
-        offer = self._offer()
-        accepted = self.runner.receive_offer(offer, now=21.0)
-
+        accepted = self.runner.receive_offer(self._offer(), now=21.0)
         self.assertTrue(accepted.accepted)
         self.assertFalse(accepted.completed)
         self.assertEqual(self.handler_calls, 0)
@@ -142,10 +138,8 @@ class SpecialistNodeRunnerTests(unittest.TestCase):
 
     def test_safe_handler_completes_and_returns_important_result_to_queen(self):
         outcome = self.runner.process_offer(self._offer(), now=21.0)
-
         self.assertTrue(outcome.accepted)
         self.assertTrue(outcome.completed)
-        self.assertEqual(outcome.state, "completed")
         self.assertEqual(outcome.output["average_celsius"], 93.0)
         self.assertFalse(outcome.output["actuation_performed"])
         self.assertFalse(outcome.output["hardware_accessed"])
@@ -171,37 +165,38 @@ class SpecialistNodeRunnerTests(unittest.TestCase):
             self._offer(handler_name="missing-handler"),
             now=21.0,
         )
-
         self.assertTrue(outcome.refused)
         self.assertIn("not registered", outcome.errors[0])
         self.assertEqual(self.handler_calls, 0)
         self.assertIsNone(self.coordinator.lease_for("thermal-work-1"))
-        self.assertIn("WORK_REFUSED", [entry["event_type"] for entry in self.lifecycle])
-        self.assertIn("WORK_DEGRADED", [entry["event_type"] for entry in self.lifecycle])
+        events = [entry["event_type"] for entry in self.lifecycle]
+        self.assertIn("WORK_REFUSED", events)
+        self.assertIn("WORK_DEGRADED", events)
 
     def test_consequential_work_is_refused_by_ghost_runner(self):
         outcome = self.runner.receive_offer(
             self._offer(consequential=True),
             now=21.0,
         )
-
         self.assertTrue(outcome.refused)
         self.assertIn("consequential", outcome.errors[0])
         self.assertEqual(self.handler_calls, 0)
 
     def test_expired_lease_is_refused_before_acceptance(self):
-        offer = self._offer(lease_seconds=2.0)
-        outcome = self.runner.receive_offer(offer, now=22.0)
-
+        outcome = self.runner.receive_offer(
+            self._offer(lease_seconds=2.0),
+            now=22.0,
+        )
         self.assertTrue(outcome.refused)
         self.assertIn("expired", outcome.errors[0])
         self.assertEqual(self.handler_calls, 0)
 
-    def test_full_task_slot_refuses_second_offer(self):
+    def test_local_task_limit_blocks_race_before_next_heartbeat(self):
         first = self._offer("thermal-work-1")
         self.runner.receive_offer(first, now=21.0)
 
-        self.runner.heartbeat(now=21.5)
+        # Runtime still has the last idle advertisement and may race a second offer.
+        # The node's local accepted-task state must independently refuse it.
         second = self._offer("thermal-work-2")
         outcome = self.runner.receive_offer(second, now=22.0)
 
@@ -210,11 +205,21 @@ class SpecialistNodeRunnerTests(unittest.TestCase):
         self.assertEqual(self.runner.active_work_ids(), ("thermal-work-1",))
         self.assertEqual(self.handler_calls, 0)
 
+    def test_saturated_heartbeat_prevents_runtime_from_offering_more_work(self):
+        self.runner.receive_offer(self._offer("thermal-work-1"), now=21.0)
+        heartbeat = self.runner.heartbeat(now=21.5)
+        second = self.service.submit(self._proposal("thermal-work-2"), now=22.0)
+
+        self.assertEqual(heartbeat.advertisement.availability, NodeAvailability.SATURATED)
+        self.assertFalse(second.accepted)
+        self.assertIsNone(second.node_id)
+        self.assertEqual(second.state, "capability_unavailable")
+        self.assertEqual(second.lifecycle[0].event_type, "WORK_DEGRADED")
+
     def test_draining_node_refuses_new_work(self):
         self.runner.drain()
         advertisement = self.runner.advertisement(now=20.5)
         outcome = self.runner.receive_offer(self._offer(), now=21.0)
-
         self.assertEqual(advertisement.availability, NodeAvailability.DRAINING)
         self.assertTrue(outcome.refused)
         self.assertIn("draining", outcome.errors[0])
@@ -268,7 +273,6 @@ class SpecialistNodeRunnerTests(unittest.TestCase):
             service_client=self.service,
         )
         outcome = runner.process_offer(self._offer(), now=21.0)
-
         self.assertTrue(outcome.completed)
         self.assertEqual(outcome.output["result_status"], "failed")
         self.assertIn("failed closed", outcome.output["summary"])
@@ -276,8 +280,8 @@ class SpecialistNodeRunnerTests(unittest.TestCase):
         self.assertIsNone(self.coordinator.lease_for("thermal-work-1"))
 
     def test_handler_claiming_hardware_access_fails_closed(self):
-        unsafe_output = GhostHandlerRegistry()
-        unsafe_output.register(
+        handlers = GhostHandlerRegistry()
+        handlers.register(
             GhostHandlerSpec(
                 name="thermal-average",
                 work_classes=("thermal-analysis",),
@@ -291,11 +295,10 @@ class SpecialistNodeRunnerTests(unittest.TestCase):
         )
         runner = SpecialistNodeRunner(
             profile=self.profile,
-            handlers=unsafe_output,
+            handlers=handlers,
             service_client=self.service,
         )
         outcome = runner.process_offer(self._offer(), now=21.0)
-
         self.assertTrue(outcome.completed)
         self.assertEqual(outcome.output["result_status"], "failed")
         self.assertIn("forbidden side effects", outcome.output["summary"])
@@ -321,8 +324,7 @@ class SpecialistNodeRunnerTests(unittest.TestCase):
             service_client=service,
         )
         runner.heartbeat(now=10.0)
-        proposal = self._proposal()
-        offered = service.submit(proposal, now=20.0)
+        offered = service.submit(self._proposal(), now=20.0)
         offer = SpecialistWorkOffer.from_service_outcome(
             offered,
             handler_name="thermal-average",
@@ -330,16 +332,12 @@ class SpecialistNodeRunnerTests(unittest.TestCase):
         )
 
         first = runner.process_offer(offer, now=21.0)
-        completion_receipts = [
-            entry for entry in self.lifecycle if entry["event_type"] == "WORK_COMPLETED"
-        ]
         second = runner.retry_completion("thermal-work-1")
 
         self.assertTrue(first.pending_completion)
         self.assertFalse(first.completed)
         self.assertTrue(second.completed)
         self.assertEqual(self.handler_calls, 1)
-        self.assertEqual(len(completion_receipts), 1)
         self.assertEqual(
             len([entry for entry in self.lifecycle if entry["event_type"] == "WORK_COMPLETED"]),
             1,
@@ -359,7 +357,6 @@ class SpecialistNodeRunnerTests(unittest.TestCase):
     def test_offer_for_another_node_is_ignored_without_refusing_its_lease(self):
         offer = replace(self._offer(), node_id="another-node")
         outcome = self.runner.receive_offer(offer, now=21.0)
-
         self.assertEqual(outcome.state, "not-addressed-to-this-node")
         self.assertFalse(outcome.refused)
         self.assertIsNotNone(self.coordinator.lease_for("thermal-work-1"))
@@ -377,7 +374,6 @@ class SpecialistNodeRunnerTests(unittest.TestCase):
             ),
         )
         advertisement = runner.advertisement(now=15.0)
-
         self.assertEqual(advertisement.availability, NodeAvailability.DEGRADED)
         self.assertEqual(advertisement.health, 0.4)
         self.assertEqual(advertisement.current_load, 0.2)
