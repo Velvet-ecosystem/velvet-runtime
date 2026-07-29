@@ -191,19 +191,20 @@ class SpecialistNodeRunnerTests(unittest.TestCase):
         self.assertIn("expired", outcome.errors[0])
         self.assertEqual(self.handler_calls, 0)
 
-    def test_local_task_limit_blocks_race_before_next_heartbeat(self):
-        first = self._offer("thermal-work-1")
-        self.runner.receive_offer(first, now=21.0)
-
-        # Runtime still has the last idle advertisement and may race a second offer.
-        # The node's local accepted-task state must independently refuse it.
-        second = self._offer("thermal-work-2")
-        outcome = self.runner.receive_offer(second, now=22.0)
-
+    def test_unsupported_handler_parameter_is_refused_before_acceptance(self):
+        outcome = self.runner.receive_offer(
+            self._offer(
+                parameters={
+                    "samples": [91.0, 93.0],
+                    "detail": "full",
+                }
+            ),
+            now=21.0,
+        )
         self.assertTrue(outcome.refused)
-        self.assertIn("task limit", outcome.errors[0])
-        self.assertEqual(self.runner.active_work_ids(), ("thermal-work-1",))
+        self.assertIn("unsupported", outcome.errors[0])
         self.assertEqual(self.handler_calls, 0)
+        self.assertIsNone(self.coordinator.lease_for("thermal-work-1"))
 
     def test_saturated_heartbeat_prevents_runtime_from_offering_more_work(self):
         self.runner.receive_offer(self._offer("thermal-work-1"), now=21.0)
