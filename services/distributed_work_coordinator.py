@@ -50,8 +50,6 @@ class DegradationMode(str, Enum):
 
 @dataclass(frozen=True)
 class NodeAdvertisement:
-    """Verified body-organ capability and live-condition advertisement."""
-
     node_id: str
     body_id: str
     organ: str
@@ -133,10 +131,14 @@ class VerifiedNodeRegistry:
             reasons.append("continuity-not-verified")
         if reasons:
             return NodeRegistrationDecision(False, "rejected", node_id, tuple(reasons))
-
         with self._lock:
             self._nodes[node_id] = advertisement
-        return NodeRegistrationDecision(True, "registered", node_id, ("verified-body-organ",))
+        return NodeRegistrationDecision(
+            True,
+            "registered",
+            node_id,
+            ("verified-body-organ",),
+        )
 
     def get(self, node_id: str) -> Optional[NodeAdvertisement]:
         with self._lock:
@@ -160,7 +162,12 @@ class VerifiedNodeRegistry:
             self._nodes[key] = updated
             return updated
 
-    def expired_node_ids(self, *, now: float, max_age_seconds: float) -> Tuple[str, ...]:
+    def expired_node_ids(
+        self,
+        *,
+        now: float,
+        max_age_seconds: float,
+    ) -> Tuple[str, ...]:
         if max_age_seconds <= 0:
             raise ValueError("max_age_seconds must be positive")
         with self._lock:
@@ -177,8 +184,6 @@ class VerifiedNodeRegistry:
 
 @dataclass(frozen=True)
 class WorkRequirement:
-    """Bounded work description supplied to Runtime for placement."""
-
     work_id: str
     work_class: str
     required_capabilities: Tuple[str, ...]
@@ -199,10 +204,12 @@ class WorkRequirement:
             raise ValueError("work_id and work_class are required")
         if not self.required_capabilities:
             raise ValueError("at least one required capability is required")
-        if any(not value.strip() for value in self.required_capabilities + self.preferred_capabilities):
+        values = self.required_capabilities + self.preferred_capabilities
+        if any(not value.strip() for value in values):
             raise ValueError("work capabilities cannot be blank")
-        if self.observe_only_capability is not None and not self.observe_only_capability.strip():
-            raise ValueError("observe_only_capability cannot be blank")
+        if self.observe_only_capability is not None:
+            if not self.observe_only_capability.strip():
+                raise ValueError("observe_only_capability cannot be blank")
         for value in (self.min_health, self.max_load):
             if not 0.0 <= value <= 1.0:
                 raise ValueError("work thresholds must be between 0 and 1")
@@ -276,7 +283,7 @@ class WorkPlacementDecision:
 
 
 class DistributedWorkCoordinator:
-    """Choose, lease, hand off, and recover bounded work across verified organs."""
+    """Choose, lease, hand off, and recover work across verified organs."""
 
     def __init__(self, registry: VerifiedNodeRegistry) -> None:
         self.registry = registry
@@ -295,11 +302,15 @@ class DistributedWorkCoordinator:
     ) -> WorkPlacementDecision:
         if lease_seconds <= 0:
             raise ValueError("lease_seconds must be positive")
-        excluded = {_text(node_id) for node_id in exclude_nodes if _text(node_id)}
-
+        excluded = {
+            _text(node_id)
+            for node_id in exclude_nodes
+            if _text(node_id)
+        }
+        work_id = _text(requirement.work_id)
         with self._lock:
             self._expire_leases_locked(now)
-            existing = self._leases.get(_text(requirement.work_id))
+            existing = self._leases.get(work_id)
             if existing is not None:
                 return WorkPlacementDecision(
                     True,
@@ -309,8 +320,8 @@ class DistributedWorkCoordinator:
                     existing.degradation,
                     ("active workload lease already exists",),
                 )
-            self._requirements[_text(requirement.work_id)] = requirement
-            excluded |= self._refusals.get(_text(requirement.work_id), set())
+            self._requirements[work_id] = requirement
+            excluded |= self._refusals.get(work_id, set())
             return self._place_locked(
                 requirement,
                 now=now,
@@ -332,7 +343,6 @@ class DistributedWorkCoordinator:
         refusal_reason = _text(reason)
         if not refusal_reason:
             raise ValueError("refusal reason is required")
-
         with self._lock:
             lease = self._leases.get(work)
             requirement = self._requirements.get(work)
@@ -355,7 +365,9 @@ class DistributedWorkCoordinator:
             )
             return replace(
                 decision,
-                reasons=(f"{node} refused:{refusal_reason}",) + decision.reasons,
+                reasons=(
+                    "%s refused:%s" % (node, refusal_reason),
+                ) + decision.reasons,
             )
 
     def handoff(
@@ -403,7 +415,10 @@ class DistributedWorkCoordinator:
         unavailable = {
             node.node_id
             for node in self.registry.snapshot()
-            if node.availability in {NodeAvailability.OFFLINE, NodeAvailability.QUARANTINED}
+            if node.availability in {
+                NodeAvailability.OFFLINE,
+                NodeAvailability.QUARANTINED,
+            }
         }
         failed = {_text(node_id) for node_id in stale | unavailable}
         for node_id in sorted(failed):
@@ -432,7 +447,9 @@ class DistributedWorkCoordinator:
                 decisions.append(
                     replace(
                         decision,
-                        reasons=(f"recovery-from:{old_lease.node_id}",) + decision.reasons,
+                        reasons=(
+                            "recovery-from:%s" % old_lease.node_id,
+                        ) + decision.reasons,
                     )
                 )
         return tuple(decisions)
@@ -464,13 +481,14 @@ class DistributedWorkCoordinator:
         for node in self.registry.snapshot():
             node_id = _text(node.node_id)
             if node_id in excluded:
-                exclusions.append(f"{node_id}:excluded-or-refused")
+                exclusions.append("%s:excluded-or-refused" % node_id)
                 continue
-            exclusion = self._exclusion_reason(requirement, node, active_counts.get(node_id, 0))
+            active = active_counts.get(node_id, 0)
+            exclusion = self._exclusion_reason(requirement, node, active)
             if exclusion is not None:
-                exclusions.append(f"{node_id}:{exclusion}")
+                exclusions.append("%s:%s" % (node_id, exclusion))
                 continue
-            candidate = self._candidate_for(requirement, node, active_counts.get(node_id, 0))
+            candidate = self._candidate_for(requirement, node, active)
             if candidate is None:
                 continue
             if candidate.mode is PlacementMode.PARTIAL:
@@ -488,15 +506,17 @@ class DistributedWorkCoordinator:
                 None,
                 (),
                 DegradationMode.CAPABILITY_UNAVAILABLE,
-                ("no verified healthy organ can satisfy the work",) + tuple(exclusions),
+                ("no verified healthy organ can satisfy the work",)
+                + tuple(exclusions),
             )
 
         ranked = tuple(sorted(candidates, key=self._sort_key))
         chosen = ranked[0]
         degradation = self._degradation(chosen.mode)
+        work_id = _text(requirement.work_id)
         lease = WorkLease(
-            lease_id=f"{_text(requirement.work_id)}:{chosen.node_id}",
-            work_id=_text(requirement.work_id),
+            lease_id="%s:%s" % (work_id, chosen.node_id),
+            work_id=work_id,
             node_id=chosen.node_id,
             organ=chosen.organ,
             mode=chosen.mode,
@@ -507,15 +527,21 @@ class DistributedWorkCoordinator:
             degradation=degradation,
             court_authorization_required=requirement.consequential,
         )
-        self._leases[lease.work_id] = lease
-        state = "leased" if degradation is DegradationMode.NONE else "leased_degraded"
+        self._leases[work_id] = lease
+        state = (
+            "leased"
+            if degradation is DegradationMode.NONE
+            else "leased_degraded"
+        )
         return WorkPlacementDecision(
             True,
             state,
             lease,
             tuple(candidate.node_id for candidate in ranked[1:]),
             degradation,
-            ("Runtime selected and leased a compatible organ",) + chosen.reasons + tuple(exclusions),
+            ("Runtime selected and leased a compatible organ",)
+            + chosen.reasons
+            + tuple(exclusions),
         )
 
     @staticmethod
@@ -534,7 +560,7 @@ class DistributedWorkCoordinator:
             NodeAvailability.OFFLINE,
             NodeAvailability.QUARANTINED,
         }:
-            return f"availability:{node.availability.value}"
+            return "availability:%s" % node.availability.value
         if node.health < requirement.min_health:
             return "health-below-work-minimum"
         if node.current_load > requirement.max_load:
@@ -543,12 +569,14 @@ class DistributedWorkCoordinator:
             return "task-limit-exceeded"
         if requirement.work_class in node.refused_work_classes:
             return "work-class-refused"
-        if node.accepted_work_classes and requirement.work_class not in node.accepted_work_classes:
-            return "work-class-not-accepted"
+        if node.accepted_work_classes:
+            if requirement.work_class not in node.accepted_work_classes:
+                return "work-class-not-accepted"
         if node.tier is NodeTier.QUEEN and not requirement.allow_queen_fallback:
             return "queen-fallback-disabled"
-        if requirement.whole_system_coordination and node.tier is not NodeTier.QUEEN:
-            return "whole-system-coordination-requires-queen"
+        if requirement.whole_system_coordination:
+            if node.tier is not NodeTier.QUEEN:
+                return "whole-system-coordination-requires-queen"
         return None
 
     def _candidate_for(
@@ -559,42 +587,46 @@ class DistributedWorkCoordinator:
     ) -> Optional[WorkCandidate]:
         required = set(requirement.required_capabilities)
         normal = set(node.capabilities)
-        overflow = normal | set(node.overflow_capabilities)
-        temporary = overflow | set(node.temporary_absorption_capabilities)
+        overflow_only = set(node.overflow_capabilities)
+        temporary_only = set(node.temporary_absorption_capabilities)
+
+        overflow_allowed = requirement.allow_overflow and node.overflow_capable
+        temporary_allowed = requirement.allow_temporary_absorption
+        overflow_pool = normal | overflow_only if overflow_allowed else normal
+        temporary_pool = normal | temporary_only if temporary_allowed else normal
+        fallback_pool = overflow_pool | temporary_pool
 
         if required.issubset(normal):
             mode = (
                 PlacementMode.QUEEN_FALLBACK
-                if node.tier is NodeTier.QUEEN and not requirement.whole_system_coordination
+                if node.tier is NodeTier.QUEEN
+                and not requirement.whole_system_coordination
                 else PlacementMode.PRIMARY
             )
             matched = tuple(sorted(required))
             missing = ()
-        elif (
-            requirement.allow_overflow
-            and node.overflow_capable
-            and required.issubset(overflow)
-        ):
+        elif overflow_allowed and required.issubset(overflow_pool):
             mode = PlacementMode.OVERFLOW
             matched = tuple(sorted(required))
             missing = ()
-        elif (
-            requirement.allow_temporary_absorption
-            and required.issubset(temporary)
-        ):
+        elif temporary_allowed and required.issubset(temporary_pool):
             mode = PlacementMode.TEMPORARY_ABSORPTION
             matched = tuple(sorted(required))
             missing = ()
         else:
-            matched_set = required & temporary
-            missing_set = required - temporary
-            if requirement.allow_partial and requirement.partial_result_useful and matched_set:
+            matched_set = required & fallback_pool
+            missing_set = required - fallback_pool
+            if (
+                requirement.allow_partial
+                and requirement.partial_result_useful
+                and matched_set
+            ):
                 mode = PlacementMode.PARTIAL
                 matched = tuple(sorted(matched_set))
                 missing = tuple(sorted(missing_set))
             elif (
                 requirement.observe_only_capability is not None
-                and requirement.observe_only_capability in temporary
+                and requirement.observe_only_capability in fallback_pool
             ):
                 mode = PlacementMode.OBSERVE_ONLY
                 matched = (requirement.observe_only_capability,)
@@ -602,8 +634,11 @@ class DistributedWorkCoordinator:
             else:
                 return None
 
-        remaining_tasks = max(0, node.max_concurrent_tasks - node.current_tasks - active_leases)
-        task_capacity = remaining_tasks / node.max_concurrent_tasks
+        remaining = max(
+            0,
+            node.max_concurrent_tasks - node.current_tasks - active_leases,
+        )
+        task_capacity = remaining / node.max_concurrent_tasks
         capacity = min(node.advertised_capacity, task_capacity)
         preferred = set(requirement.preferred_capabilities)
         preferred_ratio = (
@@ -615,10 +650,13 @@ class DistributedWorkCoordinator:
             node.health * 0.35
             + capacity * 0.35
             + preferred_ratio * 0.15
-            + (0.10 if node.availability is NodeAvailability.AVAILABLE else 0.05)
+            + (
+                0.10
+                if node.availability is NodeAvailability.AVAILABLE
+                else 0.05
+            )
             + 0.05
         )
-        reasons = [f"health:{node.health:.2f}", f"capacity:{capacity:.2f}"]
         penalties = {
             PlacementMode.PRIMARY: 0.0,
             PlacementMode.OVERFLOW: 0.03,
@@ -628,8 +666,12 @@ class DistributedWorkCoordinator:
             PlacementMode.OBSERVE_ONLY: 0.22,
         }
         score -= penalties[mode]
+        reasons = (
+            "health:%.2f" % node.health,
+            "capacity:%.2f" % capacity,
+        )
         if mode is not PlacementMode.PRIMARY:
-            reasons.append(f"mode:{mode.value}")
+            reasons += ("mode:%s" % mode.value,)
         return WorkCandidate(
             node_id=_text(node.node_id),
             organ=node.organ,
@@ -637,7 +679,7 @@ class DistributedWorkCoordinator:
             score=round(max(0.0, min(score, 1.0)), 4),
             matched_capabilities=matched,
             missing_capabilities=missing,
-            reasons=tuple(reasons),
+            reasons=reasons,
         )
 
     @staticmethod
@@ -659,11 +701,12 @@ class DistributedWorkCoordinator:
         return DegradationMode.OBSERVE_ONLY
 
     def _expire_leases_locked(self, now: float) -> None:
-        for work_id in [
+        expired = [
             work_id
             for work_id, lease in self._leases.items()
             if now >= lease.expires_at
-        ]:
+        ]
+        for work_id in expired:
             self._leases.pop(work_id, None)
 
 
