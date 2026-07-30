@@ -5,23 +5,31 @@ from __future__ import annotations
 
 import json
 import multiprocessing
+import sys
 import tempfile
 import threading
 import time
 from pathlib import Path
 
-from services.distributed_work_coordinator import (
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
+
+from services.distributed_work_coordinator import (  # noqa: E402
     DistributedWorkCoordinator,
     VerifiedNodeRegistry,
 )
-from services.distributed_work_service import DistributedWorkService, WorkProposal
-from services.distributed_work_unix_transport import (
+from services.distributed_work_service import (  # noqa: E402
+    DistributedWorkService,
+    WorkProposal,
+)
+from services.distributed_work_unix_transport import (  # noqa: E402
     DistributedWorkServiceUnixServer,
     SpecialistNodeUnixServer,
     UnixDistributedWorkClient,
     UnixSpecialistNodeClient,
 )
-from services.specialist_node_runner import (
+from services.specialist_node_runner import (  # noqa: E402
     GhostHandlerRegistry,
     GhostHandlerSpec,
     SpecialistNodeProfile,
