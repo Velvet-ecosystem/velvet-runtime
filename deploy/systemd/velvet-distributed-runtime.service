@@ -1,0 +1,38 @@
+[Unit]
+Description=Velvet Distributed Runtime Service
+Documentation=file:/opt/velvet/velvet-runtime/docs/distributed_work_daemons.md
+After=local-fs.target
+Before=velvet-specialist@.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=velvet
+Group=velvet
+WorkingDirectory=/opt/velvet/velvet-runtime
+ExecStart=/usr/bin/python3 -m services.distributed_work_daemon runtime --config /etc/velvet/distributed-runtime.json
+Restart=on-failure
+RestartSec=2
+KillSignal=SIGTERM
+TimeoutStopSec=15
+RuntimeDirectory=velvet
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=restart
+StateDirectory=velvet-runtime
+StateDirectoryMode=0750
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/run/velvet /var/lib/velvet-runtime
+CapabilityBoundingSet=
+AmbientCapabilities=
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

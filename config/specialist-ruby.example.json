@@ -1,0 +1,38 @@
+{
+  "schema": "velvet.runtime.specialist_daemon.v1",
+  "runtime_socket": "/run/velvet/runtime.sock",
+  "runner_socket": "/run/velvet/ruby.sock",
+  "state_path": "/var/lib/velvet-specialist-ruby/runner-state.json",
+  "heartbeat_seconds": 5.0,
+  "handlers": [
+    "thermal-average"
+  ],
+  "allowed_uids": [],
+  "allowed_gids": [],
+  "node": {
+    "node_id": "ruby-luckfox-1",
+    "body_id": "velvet-body",
+    "organ": "ruby",
+    "tier": "specialist_linux",
+    "capabilities": [
+      "analyse-thermal"
+    ],
+    "accepted_work_classes": [
+      "thermal-analysis"
+    ],
+    "refused_work_classes": [],
+    "max_concurrent_tasks": 1,
+    "overflow_capable": false,
+    "overflow_capabilities": [],
+    "temporary_absorption_capabilities": [],
+    "body_verified": true,
+    "continuity_verified": true,
+    "authority": "none"
+  },
+  "transport_only": true,
+  "canonical": false,
+  "grants_authority": false,
+  "grants_execution": false,
+  "grants_actuation": false,
+  "authority": "none"
+}

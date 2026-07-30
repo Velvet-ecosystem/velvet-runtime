@@ -1,0 +1,20 @@
+{
+  "schema": "velvet.runtime.distributed_daemon.v1",
+  "body_id": "velvet-body",
+  "socket_path": "/run/velvet/runtime.sock",
+  "lifecycle_journal": "/var/lib/velvet-runtime/distributed-lifecycle.jsonl",
+  "queen_result_journal": "/var/lib/velvet-runtime/queen-results.jsonl",
+  "recovery_journal": "/var/lib/velvet-runtime/distributed-recovery.jsonl",
+  "state_path": "/var/lib/velvet-runtime/distributed-state.json",
+  "recovery_interval_seconds": 5.0,
+  "max_heartbeat_age_seconds": 20.0,
+  "reassignment_lease_seconds": 60.0,
+  "allowed_uids": [],
+  "allowed_gids": [],
+  "transport_only": true,
+  "canonical": false,
+  "grants_authority": false,
+  "grants_execution": false,
+  "grants_actuation": false,
+  "authority": "none"
+}
