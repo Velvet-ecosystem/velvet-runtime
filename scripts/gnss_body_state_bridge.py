@@ -17,6 +17,7 @@ from services.gnss_body_adapter import (
     GnssParseError,
 )
 from services.locked_body_state_bridge import LockedBodyStateSnapshotBridge
+from services.read_only_nmea_serial import ReadOnlyNmeaSerial
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -70,22 +71,16 @@ def run_bridge(args: argparse.Namespace) -> int:
     if not 0.05 <= args.read_timeout <= 60.0:
         raise ValueError("read-timeout must be between 0.05 and 60 seconds")
 
-    try:
-        import serial
-    except ImportError:
-        raise RuntimeError("pyserial is required for the physical GNSS bridge")
-
     adapter = GnssBodyAdapter(
         GnssAdapterConfig(stale_after_ms=args.stale_after_ms)
     )
     bridge = LockedBodyStateSnapshotBridge(args.snapshot, args.journal)
 
     try:
-        port = serial.Serial(
-            port=args.device,
-            baudrate=args.baud,
+        port = ReadOnlyNmeaSerial(
+            device=args.device,
+            baud=args.baud,
             timeout=args.read_timeout,
-            write_timeout=None,
         )
     except Exception as exc:
         failed = adapter.mark_failed("GNSS serial open failed: %s" % exc)
