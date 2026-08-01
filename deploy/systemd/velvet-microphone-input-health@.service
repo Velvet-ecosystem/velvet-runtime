@@ -1,0 +1,43 @@
+[Unit]
+Description=Velvet Microphone Input Health (%I)
+After=local-fs.target sound.target
+Wants=sound.target
+
+[Service]
+Type=simple
+User=velvet
+Group=velvet
+SupplementaryGroups=audio
+WorkingDirectory=/opt/velvet/velvet-runtime
+Environment=PYTHONUNBUFFERED=1
+Environment=VELVET_MICROPHONE_DEVICE=hw:0,0
+Environment=VELVET_MICROPHONE_CHANNELS=1
+Environment=VELVET_MICROPHONE_RATE_HZ=16000
+Environment=VELVET_MICROPHONE_PROBE_SECONDS=1
+Environment=VELVET_MICROPHONE_INTERVAL_MS=5000
+Environment=VELVET_MICROPHONE_STALE_AFTER_MS=15000
+Environment=VELVET_MICROPHONE_MODULE_ID=microphone-input-main
+Environment=VELVET_MICROPHONE_SOURCE_ID=microphone.array.main
+EnvironmentFile=-/etc/velvet/microphone-%I.env
+ExecStart=/usr/bin/python3 /opt/velvet/velvet-runtime/scripts/microphone_input_health_bridge.py
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=true
+MemoryDenyWriteExecute=true
+ReadWritePaths=/run/velvet /var/lib/velvet-runtime/body-state
+DevicePolicy=closed
+DeviceAllow=/dev/snd/* rw
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
