@@ -1,0 +1,46 @@
+[Unit]
+Description=Velvet Current Camera Frame Publisher (%I)
+After=local-fs.target dev-%i.device
+Wants=dev-%i.device
+
+[Service]
+Type=simple
+User=velvet
+Group=velvet
+SupplementaryGroups=video
+WorkingDirectory=/opt/velvet/velvet-runtime
+Environment=PYTHONUNBUFFERED=1
+Environment=VELVET_CAMERA_INPUT_MODE=v4l2
+Environment=VELVET_CAMERA_DEVICE=/dev/%I
+Environment=VELVET_CAMERA_FRAME_PATH=/run/velvet/camera/latest-frame.jpg
+Environment=VELVET_CAMERA_SOURCE_ID=camera.front
+Environment=VELVET_CAMERA_MODULE_ID=camera-frame-front
+Environment=VELVET_CAMERA_WIDTH=1280
+Environment=VELVET_CAMERA_HEIGHT=720
+Environment=VELVET_CAMERA_FRAMERATE=5
+Environment=VELVET_CAMERA_INPUT_FORMAT=mjpeg
+Environment=VELVET_CAMERA_INTERVAL_MS=1000
+Environment=VELVET_CAMERA_STALE_AFTER_MS=5000
+EnvironmentFile=-/etc/velvet/camera-%I.env
+ExecStart=/usr/bin/python3 /opt/velvet/velvet-runtime/scripts/camera_frame_body_state_bridge.py
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=true
+MemoryDenyWriteExecute=true
+ReadWritePaths=/run/velvet/camera /run/velvet /var/lib/velvet-runtime/body-state
+DevicePolicy=closed
+DeviceAllow=/dev/%I rw
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target
