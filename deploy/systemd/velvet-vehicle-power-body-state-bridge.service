@@ -33,7 +33,8 @@ RestrictNamespaces=true
 LockPersonality=true
 MemoryDenyWriteExecute=true
 RestrictAddressFamilies=AF_UNIX
-ReadOnlyPaths=/run/velvet/sensors
+DevicePolicy=closed
+ReadOnlyPaths=-/run/velvet/sensors
 ReadWritePaths=/run/velvet /var/lib/velvet-runtime/body-state
 UMask=0077
 
