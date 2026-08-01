@@ -67,7 +67,8 @@ class MicrophoneInputDeploymentTests(unittest.TestCase):
         self.assertIn("speech_recognition_performed: false", document)
         self.assertIn("quiet is not failure", lowered)
         self.assertIn("physical validation still required", lowered)
-        self.assertIn("does not perform wake-word detection", lowered)
+        self.assertIn("does not perform speech recognition", lowered)
+        self.assertIn("wake-word detection", lowered)
 
 
 if __name__ == "__main__":
