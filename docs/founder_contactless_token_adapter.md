@@ -6,8 +6,12 @@ a 125 kHz EM4100-style contactless identifier reader. Its static identifier is
 not a cryptographic challenge-response credential and never grants authority by
 itself.
 
+The intended first hardware is a hard-wired RDM6300 UART board with a writable
+T5577/EM4305-class ring. Because that ring can be rewritten or cloned, a match is
+useful identity evidence but remains a low-confidence static factor.
+
 ```text
-contactless tag
+contactless ring or tag
   -> read-only 9600-baud RDM6300 UART frame
   -> STX / ETX / hexadecimal / XOR checksum validation
   -> reader-specific HMAC reference
@@ -57,11 +61,12 @@ sudo install -d -m 0700 -o velvet -g velvet /etc/velvet
 sudo -u velvet sh -c 'umask 077; openssl rand -hex 32 > /etc/velvet/contactless-token.key'
 ```
 
-With the reader attached, obtain a reference without printing the raw tag value:
+With the hard-wired reader attached, obtain a reference without printing the raw
+tag value:
 
 ```bash
 sudo -u velvet python3 scripts/contactless_token_reference_probe.py \
-  --device /dev/ttyUSB0 \
+  --device /dev/ttyS5 \
   --reader-id rdm6300-main
 ```
 
@@ -96,12 +101,40 @@ Three consecutive invalid or unreadable frames fail the service closed. A valid
 frame after restart produces fresh evidence rather than resurrecting an old
 presentation.
 
-## Physical boundary
+## Hard-wired UP Squared connection
 
-The Runtime reader opens the serial device with `O_RDONLY` and exposes no write
-method. The module's RX line is unnecessary for this integration and should
-remain disconnected. Use the correct voltage supply and level conversion or a
-suitable USB-TTL interface for the physical module.
+The original UP Squared exposes 3.3 V TTL UART. The RDM6300 board is powered from
+5 V and its output must not be assumed safe for direct connection to a 3.3 V
+receiver.
+
+Use this receive-only wiring:
+
+```text
+RDM6300 +5V  -> regulated 5 V supply
+RDM6300 GND  -> UP Squared ground
+RDM6300 TX   -> 5 V to 3.3 V level conversion -> UP Squared UART RX
+RDM6300 RX   -> not connected
+```
+
+The repository defaults to `/dev/ttyS5`, the expected 40-pin UART on the Founder
+board. Confirm the real device on the installed kernel before enabling the
+service because the two UP Squared UARTs may enumerate as `/dev/ttyS4` and
+`/dev/ttyS5` depending on connector and configuration:
+
+```bash
+dmesg | grep -E 'ttyS4|ttyS5'
+ls -l /dev/ttyS4 /dev/ttyS5
+```
+
+If the reader is wired to the other UART, change all three places together:
+
+- `VELVET_CONTACTLESS_DEVICE`
+- the unit's `DeviceAllow`
+- the unit's `After` and `Wants` device name
+
+The Runtime reader opens the chosen device with `O_RDONLY` and exposes no write
+method. The module's RX line remains disconnected, so this integration cannot
+program or rewrite the ring.
 
 The hardened service starts from:
 
@@ -109,13 +142,10 @@ The hardened service starts from:
 deploy/systemd/velvet-contactless-token-body-state-bridge.service
 ```
 
-Adjust both `DeviceAllow` and `VELVET_CONTACTLESS_DEVICE` if the reader does not
-enumerate as `/dev/ttyUSB0`.
-
 ## Explicit exclusions
 
 This integration adds no maintenance unlock, owner-presence boolean, door
 unlock, ignition permission, Runtime route, Court grant, executor, relay, CAN
 transmission, shell action, or physical actuation. A copied, stolen, or isolated
-tag remains only one weak static factor and should be met with additional
+ring remains only one weak static factor and should be met with additional
 verification rather than trust.
