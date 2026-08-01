@@ -21,7 +21,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--device",
-        default=os.environ.get("VELVET_CONTACTLESS_DEVICE", "/dev/ttyUSB0"),
+        default=os.environ.get("VELVET_CONTACTLESS_DEVICE", "/dev/ttyS5"),
     )
     parser.add_argument(
         "--reader-id",
