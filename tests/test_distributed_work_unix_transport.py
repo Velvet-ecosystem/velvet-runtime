@@ -120,13 +120,20 @@ class DistributedWorkUnixTransportTests(unittest.TestCase):
         thread.start()
         deadline = time.time() + 2.0
         while time.time() < deadline:
-            if server.socket_path.exists():
-                break
+            listener = getattr(server, "_listener", None)
+            if listener is not None and server.socket_path.exists():
+                try:
+                    mode = os.lstat(server.socket_path).st_mode
+                except FileNotFoundError:
+                    pass
+                else:
+                    if stat.S_ISSOCK(mode):
+                        break
             if errors:
                 raise errors[0]
             time.sleep(0.01)
         else:
-            self.fail("Unix server did not create its socket")
+            self.fail("Unix server did not become ready to accept connections")
         self.servers.append((server, stop, thread, errors))
         return server
 
