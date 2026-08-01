@@ -86,6 +86,7 @@ class VehiclePowerBodyAdapter:
     def __init__(self, config: Optional[VehiclePowerAdapterConfig] = None) -> None:
         self.config = config or VehiclePowerAdapterConfig()
         self._state = "UNKNOWN"
+        self._last_band = None  # type: Optional[str]
         self._last_observation_monotonic = None  # type: Optional[float]
         self._stale_reported = False
 
@@ -118,7 +119,9 @@ class VehiclePowerBodyAdapter:
         band = classify_voltage(voltage, self.config)
         new_state = "ONLINE" if band in {"NORMAL", "CHARGING"} else "DEGRADED"
         previous = self._state
+        previous_band = self._last_band
         self._state = new_state
+        self._last_band = band
         self._last_observation_monotonic = monotonic
         self._stale_reported = False
 
@@ -131,11 +134,7 @@ class VehiclePowerBodyAdapter:
             source_reference.strip(),
         )
         health = None
-        if previous != new_state or (new_state == "DEGRADED" and previous == "DEGRADED"):
-            # Repeated degraded bands can represent a meaningful threshold change,
-            # but ordinary healthy samples do not create journal noise.
-            health = self._transition_health(wall, previous, new_state, band, voltage)
-        elif previous == "UNKNOWN":
+        if previous != new_state or previous_band != band:
             health = self._transition_health(wall, previous, new_state, band, voltage)
         return VehiclePowerAdapterCycle(sensor, health)
 
@@ -183,6 +182,7 @@ class VehiclePowerBodyAdapter:
         wall = time.time() if now_wall is None else _finite_non_negative(now_wall, "now_wall")
         previous = self._state
         self._state = "FAILED"
+        self._last_band = None
         return VehiclePowerAdapterCycle(
             health_event=self._health_event(
                 wall,
@@ -205,9 +205,7 @@ class VehiclePowerBodyAdapter:
         source_reference: str,
     ) -> Dict[str, Any]:
         receipt_id = str(uuid4())
-        degraded_reason = None
-        if band not in {"NORMAL", "CHARGING"}:
-            degraded_reason = "VOLTAGE_%s" % band
+        degraded_reason = None if band in {"NORMAL", "CHARGING"} else "VOLTAGE_%s" % band
         sensor_payload = {
             "module_id": self.config.module_id,
             "node_id": self.config.node_id,
@@ -291,11 +289,7 @@ class VehiclePowerBodyAdapter:
         extra: Optional[Mapping[str, Any]] = None,
     ) -> Dict[str, Any]:
         event_id = str(uuid4())
-        diagnostic = {
-            "detail": detail,
-            "reason_code": reason_code,
-            "read_only": True,
-        }
+        diagnostic = {"detail": detail, "reason_code": reason_code, "read_only": True}
         if extra:
             diagnostic.update(dict(extra))
         payload = {
