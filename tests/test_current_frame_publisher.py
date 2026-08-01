@@ -29,7 +29,7 @@ PNG_BYTES = base64.b64decode(
 
 JPEG_BYTES = (
     b"\xff\xd8"
-    b"\xff\xc0\x00\x0b\x08\x00\x02\x00\x03\x01\x01\x11\x00"
+    b"\xff\xc0\x00\x0b\x08\x00\x14\x00\x14\x01\x01\x11\x00"
     b"\xff\xda\x00\x08\x01\x01\x00\x00\x3f\x00"
     b"\x00\xff\xd9"
 )
@@ -48,7 +48,7 @@ class CurrentFramePublisherTests(unittest.TestCase):
         jpeg = inspect_camera_image(JPEG_BYTES)
 
         self.assertEqual((png.image_format, png.width, png.height), ("png", 1, 1))
-        self.assertEqual((jpeg.image_format, jpeg.width, jpeg.height), ("jpeg", 3, 2))
+        self.assertEqual((jpeg.image_format, jpeg.width, jpeg.height), ("jpeg", 20, 20))
         self.assertEqual(len(png.content_sha256), 64)
         self.assertEqual(png.byte_count, len(PNG_BYTES))
 
@@ -56,7 +56,7 @@ class CurrentFramePublisherTests(unittest.TestCase):
         with self.assertRaises(CameraFrameError):
             inspect_camera_image(JPEG_BYTES[:-2])
         with self.assertRaises(CameraFrameError):
-            inspect_camera_image(JPEG_BYTES, max_pixels=4)
+            inspect_camera_image(JPEG_BYTES, max_pixels=256)
         with self.assertRaises(CameraFrameError):
             inspect_camera_image(b"not an image")
 
@@ -156,8 +156,8 @@ class CurrentFramePublisherTests(unittest.TestCase):
         self.assertEqual(target.read_bytes(), JPEG_BYTES)
         self.assertEqual(target.stat().st_mtime, 100.0)
         self.assertEqual(stat.S_IMODE(target.stat().st_mode), 0o640)
-        self.assertEqual(published.image.width, 3)
-        self.assertEqual(published.image.height, 2)
+        self.assertEqual(published.image.width, 20)
+        self.assertEqual(published.image.height, 20)
         self.assertEqual(published.target_path, str(target))
         self.assertEqual([item.name for item in target.parent.iterdir()], [target.name])
 
