@@ -11,10 +11,8 @@ import time
 from pathlib import Path
 from typing import List, Optional
 
-from services.body_state_bridge import (
-    BodyStateSnapshotBridge,
-    verify_kernel_listen_only,
-)
+from services.body_state_bridge import verify_kernel_listen_only
+from services.locked_body_state_bridge import LockedBodyStateSnapshotBridge
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -86,7 +84,7 @@ def run_bridge(args: argparse.Namespace) -> int:
             source_clock="device",
         ),
     )
-    bridge = BodyStateSnapshotBridge(args.snapshot, args.journal)
+    bridge = LockedBodyStateSnapshotBridge(args.snapshot, args.journal)
 
     try:
         while True:
