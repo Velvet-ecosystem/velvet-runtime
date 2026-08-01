@@ -7,6 +7,7 @@ Wants=dev-ttyUSB0.device
 Type=simple
 User=velvet
 Group=velvet
+SupplementaryGroups=dialout
 WorkingDirectory=/opt/velvet/velvet-runtime
 Environment=PYTHONUNBUFFERED=1
 Environment=VELVET_CONTACTLESS_DEVICE=/dev/ttyUSB0
