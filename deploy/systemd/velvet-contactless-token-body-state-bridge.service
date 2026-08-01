@@ -1,7 +1,7 @@
 [Unit]
 Description=Velvet Founder Contactless Verification Evidence Bridge
-After=local-fs.target dev-ttyUSB0.device
-Wants=dev-ttyUSB0.device
+After=local-fs.target dev-ttyS5.device
+Wants=dev-ttyS5.device
 
 [Service]
 Type=simple
@@ -10,7 +10,7 @@ Group=velvet
 SupplementaryGroups=dialout
 WorkingDirectory=/opt/velvet/velvet-runtime
 Environment=PYTHONUNBUFFERED=1
-Environment=VELVET_CONTACTLESS_DEVICE=/dev/ttyUSB0
+Environment=VELVET_CONTACTLESS_DEVICE=/dev/ttyS5
 Environment=VELVET_CONTACTLESS_READER_ID=rdm6300-main
 Environment=VELVET_CONTACTLESS_HMAC_KEY_PATH=/etc/velvet/contactless-token.key
 Environment=VELVET_CONTACTLESS_REGISTRY_PATH=/etc/velvet/contactless-token-registry.json
@@ -33,7 +33,7 @@ MemoryDenyWriteExecute=true
 RestrictAddressFamilies=AF_UNIX
 ReadWritePaths=/run/velvet /var/lib/velvet-runtime/body-state
 DevicePolicy=closed
-DeviceAllow=/dev/ttyUSB0 r
+DeviceAllow=/dev/ttyS5 r
 UMask=0077
 
 [Install]
