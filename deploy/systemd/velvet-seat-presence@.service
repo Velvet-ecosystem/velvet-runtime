@@ -1,0 +1,42 @@
+[Unit]
+Description=Velvet Seat Presence Node (%I)
+After=local-fs.target
+
+[Service]
+Type=simple
+User=velvet
+Group=velvet
+SupplementaryGroups=dialout
+WorkingDirectory=/opt/velvet/velvet-runtime
+Environment=PYTHONUNBUFFERED=1
+Environment=VELVET_SEAT_NODE_DEVICE=/dev/velvet-seat-%i
+Environment=VELVET_SEAT_NODE_BAUD=115200
+Environment=VELVET_SEAT_NODE_ID=seat-node-%i
+Environment=VELVET_SEAT_ID=%i
+Environment=VELVET_SEAT_MODULE_ID=seat-presence-%i
+Environment=VELVET_SEAT_SENSOR_MODEL=HLK-LD2410C
+Environment=VELVET_SEAT_STALE_AFTER_MS=3500
+Environment=VELVET_SEAT_FAILURE_THRESHOLD=3
+EnvironmentFile=-/etc/velvet/seat-%i.env
+ExecStart=/usr/bin/python3 /opt/velvet/velvet-runtime/scripts/seat_presence_body_state_bridge.py
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=true
+MemoryDenyWriteExecute=true
+ReadWritePaths=/run/velvet /var/lib/velvet-runtime/body-state
+DevicePolicy=closed
+DeviceAllow=/dev/velvet-seat-%i r
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
