@@ -27,7 +27,9 @@ never converted into substitute data.
 
 ## Founder runner
 
-Install `pyserial` in the Runtime environment, then run:
+The runner uses the standard-library POSIX reader in
+`services/read_only_nmea_serial.py`. It opens the device with `O_RDONLY`, exposes
+no write method, and requires no third-party serial package.
 
 ```bash
 python3 scripts/gnss_body_state_bridge.py \
@@ -38,7 +40,8 @@ python3 scripts/gnss_body_state_bridge.py \
 
 The serial path and baud are deployment settings, not assumptions about the
 receiver. Confirm the actual device node and configured baud on the UP² before
-enabling the service.
+enabling the service. Supported baud rates are restricted to the host's known
+termios constants.
 
 ## Multiple body producers
 
@@ -58,5 +61,6 @@ A hardened starting unit is provided at:
 deploy/systemd/velvet-gnss-body-state-bridge.service
 ```
 
-Adjust the device path in both `DeviceAllow` and `VELVET_GNSS_DEVICE` when the
-receiver enumerates somewhere other than `/dev/ttyACM0`.
+The unit permits read access only to the configured GNSS device. Adjust the
+device path in both `DeviceAllow` and `VELVET_GNSS_DEVICE` when the receiver
+enumerates somewhere other than `/dev/ttyACM0`.
