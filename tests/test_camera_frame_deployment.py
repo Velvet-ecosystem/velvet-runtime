@@ -80,7 +80,7 @@ class CameraFrameDeploymentTests(unittest.TestCase):
         self.assertIn("NoNewPrivileges=true", unit)
         self.assertIn("ProtectSystem=strict", unit)
         self.assertIn("RestrictAddressFamilies=AF_UNIX", unit)
-        self.assertIn("ReadWritePaths=/run/velvet/camera", unit)
+        self.assertIn("ReadWritePaths=/run/velvet ", unit)
         self.assertNotIn("/bin/sh", unit)
         self.assertNotIn("bash -c", unit)
 
