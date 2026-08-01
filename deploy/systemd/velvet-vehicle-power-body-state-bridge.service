@@ -1,0 +1,42 @@
+[Unit]
+Description=Velvet Founder Vehicle Power Body-State Bridge
+After=local-fs.target
+
+[Service]
+Type=simple
+User=velvet
+Group=velvet
+WorkingDirectory=/opt/velvet/velvet-runtime
+Environment=PYTHONUNBUFFERED=1
+Environment=VELVET_VEHICLE_VOLTAGE_PATH=/run/velvet/sensors/vehicle-voltage
+Environment=VELVET_IGNITION_PATH=/run/velvet/sensors/ignition
+Environment=VELVET_VEHICLE_VOLTAGE_UNIT=volts
+Environment=VELVET_VEHICLE_VOLTAGE_SCALE=1.0
+Environment=VELVET_NOMINAL_VOLTAGE=12.0
+Environment=VELVET_CRITICAL_LOW_VOLTAGE=10.5
+Environment=VELVET_LOW_VOLTAGE=11.8
+Environment=VELVET_CHARGING_VOLTAGE=13.2
+Environment=VELVET_HIGH_VOLTAGE=15.0
+Environment=VELVET_MAXIMUM_VOLTAGE=18.0
+ExecStart=/usr/bin/python3 /opt/velvet/velvet-runtime/scripts/vehicle_power_body_state_bridge.py
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictAddressFamilies=AF_UNIX
+DevicePolicy=closed
+ReadOnlyPaths=-/run/velvet/sensors
+ReadWritePaths=/run/velvet /var/lib/velvet-runtime/body-state
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
