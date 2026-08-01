@@ -8,6 +8,7 @@ cryptographic challenge-response proof.
 
 from __future__ import annotations
 
+import math
 import time
 from dataclasses import dataclass
 from typing import Any, Dict, Mapping, Optional, Tuple
@@ -89,7 +90,11 @@ class ContactlessTokenAdapter:
         if previous == "ONLINE":
             return ContactlessTokenCycle()
         event_type = "RECOVERED" if previous == "FAILED" else "READY"
-        detail = "Contactless reader recovered" if event_type == "RECOVERED" else "Contactless reader ready"
+        detail = (
+            "Contactless reader recovered"
+            if event_type == "RECOVERED"
+            else "Contactless reader ready"
+        )
         return ContactlessTokenCycle(
             health_event=self._health_event(
                 wall,
@@ -113,8 +118,16 @@ class ContactlessTokenAdapter:
         if not isinstance(frame, Rdm6300Frame):
             raise TypeError("frame must be an Rdm6300Frame")
         wall = time.time() if now_wall is None else _non_negative(now_wall, "now_wall")
-        monotonic = time.monotonic() if now_monotonic is None else _non_negative(now_monotonic, "now_monotonic")
-        token_ref = derive_token_reference(secret, self.config.reader_id, frame.data_hex)
+        monotonic = (
+            time.monotonic()
+            if now_monotonic is None
+            else _non_negative(now_monotonic, "now_monotonic")
+        )
+        token_ref = derive_token_reference(
+            secret,
+            self.config.reader_id,
+            frame.data_hex,
+        )
 
         if (
             token_ref == self._last_reference
@@ -217,7 +230,11 @@ class ContactlessTokenAdapter:
             )
         return ContactlessTokenCycle(sensor_event, health_event)
 
-    def mark_failed(self, reason: str, now_wall: Optional[float] = None) -> ContactlessTokenCycle:
+    def mark_failed(
+        self,
+        reason: str,
+        now_wall: Optional[float] = None,
+    ) -> ContactlessTokenCycle:
         if not isinstance(reason, str) or not reason.strip():
             raise ValueError("failure reason must be non-empty")
         if self._reader_state == "FAILED":
@@ -225,6 +242,8 @@ class ContactlessTokenAdapter:
         wall = time.time() if now_wall is None else _non_negative(now_wall, "now_wall")
         previous = self._reader_state
         self._reader_state = "FAILED"
+        self._last_reference = None
+        self._last_presentation_monotonic = None
         return ContactlessTokenCycle(
             health_event=self._health_event(
                 wall,
@@ -285,6 +304,6 @@ def _non_negative(value: float, label: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise TypeError("%s must be numeric" % label)
     result = float(value)
-    if result < 0:
-        raise ValueError("%s cannot be negative" % label)
+    if not math.isfinite(result) or result < 0:
+        raise ValueError("%s must be finite and non-negative" % label)
     return result
