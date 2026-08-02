@@ -1,5 +1,5 @@
 [Unit]
-Description=Velvet Seat Evidence Node (%I)
+Description=Velvet Seat Person-Sense Node (%I)
 After=local-fs.target
 
 [Service]
@@ -20,6 +20,13 @@ Environment=VELVET_SEAT_PRESSURE_MODULE_ID=seat-pressure-%i
 Environment=VELVET_SEAT_PRESSURE_SENSOR_MODEL=seat-pressure-pad-array
 Environment=VELVET_SEAT_PRESSURE_CONTACT_ASSERT_MS=150
 Environment=VELVET_SEAT_PRESSURE_RELEASE_ASSERT_MS=2000
+Environment=VELVET_SEAT_PERSON_TOPOLOGY_ENABLED=0
+Environment=VELVET_SEAT_PERSON_TOPOLOGY_PATH=/etc/velvet/seat-%i-person-sense.json
+Environment=VELVET_SEAT_PERSON_BODY_MAP_MODULE_ID=seat-person-body-map-%i
+Environment=VELVET_SEAT_HEARTBEAT_ENABLED=0
+Environment=VELVET_SEAT_HEARTBEAT_MODULE_ID=seat-heartbeat-%i
+Environment=VELVET_SEAT_HEARTBEAT_SENSOR_MODEL=seat-heartbeat-sensor
+Environment=VELVET_SEAT_HEARTBEAT_STALE_AFTER_MS=5000
 Environment=VELVET_SEAT_STALE_AFTER_MS=3500
 Environment=VELVET_SEAT_FAILURE_THRESHOLD=3
 EnvironmentFile=-/etc/velvet/seat-%i.env
