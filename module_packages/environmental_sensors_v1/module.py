@@ -102,11 +102,7 @@ class EnvironmentalSensorsModule:
         if state.get("schema") != _STATE_SCHEMA:
             raise ValueError("restored environment state schema is invalid")
         count = state.get("sample_count")
-        if (
-            isinstance(count, bool)
-            or not isinstance(count, int)
-            or not 0 <= count <= 2_147_483_647
-        ):
+        if isinstance(count, bool) or not isinstance(count, int) or not 0 <= count <= 2_147_483_647:
             raise ValueError("restored sample_count is invalid")
         last_sample = state.get("last_sample")
         if last_sample is not None:
@@ -165,26 +161,15 @@ def _validate_reading(
         allowed.update({"confidence", "calibration_version"})
     unknown = set(value) - allowed
     if unknown:
-        raise ValueError(
-            "environment reading has unsupported fields: %s" % sorted(unknown)
-        )
+        raise ValueError("environment reading has unsupported fields: %s" % sorted(unknown))
     cabin = _finite_number(
-        value.get("cabin_temperature_c"),
-        -80.0,
-        120.0,
-        "cabin_temperature_c",
+        value.get("cabin_temperature_c"), -80.0, 120.0, "cabin_temperature_c"
     )
     light = _finite_number(
-        value.get("ambient_light_lux"),
-        0.0,
-        500000.0,
-        "ambient_light_lux",
+        value.get("ambient_light_lux"), 0.0, 500000.0, "ambient_light_lux"
     )
     outside = _optional_number(
-        value.get("outside_temperature_c"),
-        -100.0,
-        100.0,
-        "outside_temperature_c",
+        value.get("outside_temperature_c"), -100.0, 100.0, "outside_temperature_c"
     )
     humidity = _optional_number(
         value.get("relative_humidity_percent"),
@@ -199,25 +184,20 @@ def _validate_reading(
         "relative_humidity_percent": humidity,
     }  # type: Dict[str, Any]
     if allow_metadata:
+        confidence = value.get("confidence", 0.85)
         result["confidence"] = _finite_number(
-            value.get("confidence", 0.85), 0.0, 1.0, "confidence"
+            confidence, 0.0, 1.0, "confidence"
         )
         calibration = value.get(
             "calibration_version", "unverified-environment-reader-v1"
         )
-        if (
-            not isinstance(calibration, str)
-            or not calibration.strip()
-            or len(calibration) > 96
-        ):
+        if not isinstance(calibration, str) or not calibration.strip() or len(calibration) > 96:
             raise ValueError("calibration_version is invalid")
         result["calibration_version"] = calibration.strip()
     return result
 
 
-def _finite_number(
-    value: Any, minimum: float, maximum: float, label: str
-) -> float:
+def _finite_number(value: Any, minimum: float, maximum: float, label: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError("%s must be numeric" % label)
     result = float(value)
@@ -226,9 +206,7 @@ def _finite_number(
     return result
 
 
-def _optional_number(
-    value: Any, minimum: float, maximum: float, label: str
-) -> Optional[float]:
+def _optional_number(value: Any, minimum: float, maximum: float, label: str) -> Optional[float]:
     if value is None:
         return None
     return _finite_number(value, minimum, maximum, label)
