@@ -1,5 +1,5 @@
 [Unit]
-Description=Velvet Seat Presence Node (%I)
+Description=Velvet Seat Evidence Node (%I)
 After=local-fs.target
 
 [Service]
@@ -15,6 +15,11 @@ Environment=VELVET_SEAT_NODE_ID=seat-node-%i
 Environment=VELVET_SEAT_ID=%i
 Environment=VELVET_SEAT_MODULE_ID=seat-presence-%i
 Environment=VELVET_SEAT_SENSOR_MODEL=HLK-LD2410C
+Environment=VELVET_SEAT_PRESSURE_ENABLED=1
+Environment=VELVET_SEAT_PRESSURE_MODULE_ID=seat-pressure-%i
+Environment=VELVET_SEAT_PRESSURE_SENSOR_MODEL=seat-pressure-pad-array
+Environment=VELVET_SEAT_PRESSURE_CONTACT_ASSERT_MS=150
+Environment=VELVET_SEAT_PRESSURE_RELEASE_ASSERT_MS=2000
 Environment=VELVET_SEAT_STALE_AFTER_MS=3500
 Environment=VELVET_SEAT_FAILURE_THRESHOLD=3
 EnvironmentFile=-/etc/velvet/seat-%i.env
