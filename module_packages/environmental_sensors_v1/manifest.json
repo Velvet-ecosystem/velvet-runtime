@@ -1,0 +1,40 @@
+{
+  "schema": "velvet.module_package.v1",
+  "package_id": "environmental-sensors",
+  "package_version": "1.0.0",
+  "runtime_api": "velvet.runtime.module_api.v1",
+  "lifecycle_api": "velvet.module_lifecycle.v1",
+  "entrypoint": "module.py",
+  "factory": "create_module",
+  "module_id": "environmental-sensors",
+  "owning_handmaiden": "Jade",
+  "authority": "none",
+  "read_only": true,
+  "actuation_capable": false,
+  "network_access": false,
+  "shell_access": false,
+  "simulation_supported": true,
+  "dependencies": [],
+  "conflicts": [],
+  "event_inputs": [],
+  "event_outputs": [
+    "environmental_conditions"
+  ],
+  "hardware_requirements": [
+    "environment-reader-service"
+  ],
+  "resource_budget": {
+    "memory_mb": 16,
+    "cpu_percent": 5.0,
+    "storage_mb": 2
+  },
+  "state_policy": {
+    "persistent": false,
+    "schema": "velvet.environmental_sensors.state.v1",
+    "max_snapshot_bytes": 4096
+  },
+  "files": {
+    "module.py": "5e09ad5453ba8df75b8e22d8d58389623dcd0697dad1b6e2abf1c82d9002eb4b",
+    "README.md": "9e8d7d325e67496f0ce13760e12117563010db3fd5f649dfdcbe7a81a2fb9bb1"
+  }
+}
