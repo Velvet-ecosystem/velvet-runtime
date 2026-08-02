@@ -76,7 +76,6 @@ class SeatPersonSenseBodyMapTests(unittest.TestCase):
         _pad(document, "bolster-back-left")["raw_value"] = 0
         _pad(document, "edge-front")["active"] = True
         _pad(document, "edge-front")["raw_value"] = 1
-        document["active_pad_count"] = 3
         document["contact_detected"] = True
         observation = parse_seat_pressure_line(
             _encoded(document), "seat-node-driver", "driver"
@@ -117,7 +116,6 @@ class SeatPersonSenseBodyMapTests(unittest.TestCase):
         )
         document = _pressure_message(sequence=1)
         document["pads"] = document["pads"][:-1]
-        document["active_pad_count"] = 3
         observation = parse_seat_pressure_line(
             _encoded(document), "seat-node-driver", "driver"
         )
