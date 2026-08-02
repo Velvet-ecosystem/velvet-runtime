@@ -1,0 +1,65 @@
+{
+  "schema": "velvet.seat_person_sense_topology.v1",
+  "topology_id": "tiburon-driver-person-sense-example-v1",
+  "seat_id": "driver",
+  "vehicle_profile": "hyundai-tiburon-2008-driver-seat",
+  "calibration_version": "unverified-example-v1",
+  "pads": [
+    {
+      "pad_id": "main-base-left",
+      "role": "MAIN_LOAD",
+      "surface": "seat-base-main-left",
+      "side": "LEFT",
+      "movement_weight": 0.5
+    },
+    {
+      "pad_id": "main-base-right",
+      "role": "MAIN_LOAD",
+      "surface": "seat-base-main-right",
+      "side": "RIGHT",
+      "movement_weight": 0.5
+    },
+    {
+      "pad_id": "bolster-base-left",
+      "role": "SIDE_BOLSTER",
+      "surface": "seat-base-bolster-left",
+      "side": "LEFT",
+      "movement_weight": 1.0
+    },
+    {
+      "pad_id": "bolster-base-right",
+      "role": "SIDE_BOLSTER",
+      "surface": "seat-base-bolster-right",
+      "side": "RIGHT",
+      "movement_weight": 1.0
+    },
+    {
+      "pad_id": "bolster-back-left",
+      "role": "SIDE_BOLSTER",
+      "surface": "seat-back-bolster-left",
+      "side": "LEFT",
+      "movement_weight": 1.25
+    },
+    {
+      "pad_id": "bolster-back-right",
+      "role": "SIDE_BOLSTER",
+      "surface": "seat-back-bolster-right",
+      "side": "RIGHT",
+      "movement_weight": 1.25
+    },
+    {
+      "pad_id": "edge-front",
+      "role": "EDGE_MOTION",
+      "surface": "seat-base-front-edge",
+      "side": "CENTER",
+      "movement_weight": 1.5
+    },
+    {
+      "pad_id": "edge-rear",
+      "role": "EDGE_MOTION",
+      "surface": "seat-base-rear-edge",
+      "side": "CENTER",
+      "movement_weight": 1.5
+    }
+  ]
+}
