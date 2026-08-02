@@ -68,7 +68,7 @@ class OwnerTrustedModuleLibraryTests(unittest.TestCase):
         )
         self.assertTrue(
             any(
-                item["event_type"] == "TRUSTED_MODULE_RESOLVED"
+                item.get("event_type") == "TRUSTED_MODULE_RESOLVED"
                 for item in self.receipts
             )
         )
@@ -87,7 +87,7 @@ class OwnerTrustedModuleLibraryTests(unittest.TestCase):
         denial = next(
             item
             for item in self.receipts
-            if item["event_type"] == "MODULE_TRUST_DENIED"
+            if item.get("event_type") == "MODULE_TRUST_DENIED"
         )
         self.assertFalse(denial["external_storage_scanned"])
 
