@@ -14,11 +14,11 @@ One `audio.voice_input.ready` event crosses these boundaries:
 4. `AudioIngressRuntimeHandler` uses the stable `runtime-dispatch-*` value as the Runtime `Intent.intent_id`
 5. Runtime Court evaluates `observe.audio.voice_input` for target `audio.voice_input`
 6. an approved token passes through the read-only audio voice-input safety gate
-7. the registered `audio-voice-input` executor records a bounded observation
+7. the registered `audio-voice-input` executor publishes a bounded observation and requires its durable receipt
 8. Velvet Receipts persists the terminal Court or execution receipt
 9. the dispatch worker stores that terminal receipt identifier and advances the lane
 
-The ingress receipt, stable dispatch identity, Court receipt, execution receipts, and final worker record remain linked.
+The ingress receipt, stable dispatch identity, Court receipt, observation receipt, execution receipts, and final worker record remain linked.
 
 ## Canonical receipt ledger
 
@@ -94,6 +94,8 @@ handler = AudioIngressRuntimeHandler(
 )
 ```
 
+`runtime_audio_observation_sink` must durably store or publish the bounded observation and return an object or mapping containing a non-empty `receipt_id`. Returning no receipt is an executor failure. Runtime then preserves `EXECUTION_FAILED`, and the ingress lane does not pretend the observation was completed.
+
 `handler.dispatch(envelope, dispatch_id=..., ingress_receipt_id=...)` satisfies the structural `RuntimeIngressHandler` contract used by the durable worker in `velvet-audio-studio`.
 
 The Runtime repository remains the authority side of the boundary. The audio repository supplies transport, durable ingress, ordering, and worker leases.
@@ -120,7 +122,7 @@ Only these payload fields cross into the approved executor:
 
 Raw multichannel samples, mono samples, and unlisted payload fields are not executor parameters. They remain in the durable ingress evidence where access can be governed separately.
 
-This route records that Runtime received a bounded voice-input observation. It does not transcribe speech, infer commands, grant physical control, or route an owner request to an actuator.
+This route proves that Runtime durably received a bounded voice-input observation. It does not transcribe speech, infer commands, grant physical control, or route an owner request to an actuator.
 
 ## Policy
 
@@ -164,6 +166,7 @@ Implemented:
 - canonical Velvet receipt sink and hash-chain verification
 - stable dispatch replay recovery
 - read-only voice-input executor and safety gate
+- durable observation receipt requirement
 - payload whitelist
 
 Not implemented by this binding:
