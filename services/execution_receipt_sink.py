@@ -17,6 +17,7 @@ TERMINAL_RUNTIME_EVENTS = frozenset({
     "EXECUTION_FAILED",
     "EXECUTION_DENIED",
 })
+WRAPPED_RECEIPT_SINK_ATTRIBUTE = "__velvet_wrapped_receipt_sink__"
 
 
 class RuntimeReceiptLedgerError(RuntimeError):
@@ -240,6 +241,20 @@ class ExecutionReceiptLedger:
                 f"Runtime receipt log could not be read: {exc}"
             ) from exc
         return entries
+
+
+def find_execution_receipt_ledger(receipt_sink: object) -> ExecutionReceiptLedger:
+    """Find the canonical ledger beneath transparent receipt-sink wrappers."""
+    current = receipt_sink
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        if isinstance(current, ExecutionReceiptLedger):
+            return current
+        seen.add(id(current))
+        current = getattr(current, WRAPPED_RECEIPT_SINK_ATTRIBUTE, None)
+    raise RuntimeReceiptLedgerError(
+        "Runtime receipt sink chain does not contain ExecutionReceiptLedger"
+    )
 
 
 def make_execution_receipt_sink(
