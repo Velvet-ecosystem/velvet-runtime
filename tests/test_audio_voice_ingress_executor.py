@@ -167,6 +167,28 @@ class TestAudioVoiceIngressExecutor(unittest.TestCase):
             ["COURT_AUTHORIZED", "EXECUTION_STARTED", "EXECUTION_FAILED"],
         )
 
+    def test_missing_observation_receipt_becomes_execution_failure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, pipeline, receipts, _, _ = self.pipeline(
+                Path(tmp),
+                lambda _evidence: None,
+            )
+            result = pipeline.submit(
+                intent=self.intent("runtime-dispatch-no-observation-receipt"),
+                executor_name=AUDIO_VOICE_INGRESS_EXECUTOR,
+                parameters={"selected_logical_name": "driver_upper_mic"},
+                now=100,
+            )
+
+        self.assertTrue(result.authorized)
+        self.assertFalse(result.executed)
+        self.assertEqual(result.state, "executor_failed")
+        self.assertIn("durable receipt_id", result.execution.errors[0])
+        self.assertEqual(
+            [item["event_type"] for item in receipts],
+            ["COURT_AUTHORIZED", "EXECUTION_STARTED", "EXECUTION_FAILED"],
+        )
+
     def test_route_whitelist_excludes_raw_audio_samples(self):
         parameters = AUDIO_VOICE_INPUT_ROUTE.parameters_for(SimpleNamespace(
             payload={
