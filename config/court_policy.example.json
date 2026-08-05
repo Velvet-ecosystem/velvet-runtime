@@ -6,6 +6,7 @@
       "status": "active",
       "allowed_capabilities": [
         "observe.telemetry",
+        "observe.audio.voice_input",
         "comfort.request",
         "visibility.request",
         "access.request",
@@ -19,9 +20,15 @@
       "status": "active",
       "allowed_capabilities": [
         "observe.telemetry",
+        "observe.audio.voice_input",
         "comfort.request"
       ],
-      "allowed_targets": ["cabin", "media", "telemetry"],
+      "allowed_targets": [
+        "cabin",
+        "media",
+        "telemetry",
+        "audio.voice_input"
+      ],
       "token_ttl_seconds": 15
     }
   ]
