@@ -76,7 +76,7 @@ def register_audio_voice_ingress(
             "actuation_performed": False,
         }
         result = observation_sink(dict(evidence))
-        observation_receipt_id = _optional_receipt_id(result)
+        observation_receipt_id = _required_receipt_id(result)
         return {
             "state": "observed",
             "observation_recorded": True,
@@ -98,15 +98,13 @@ def register_audio_voice_ingress(
     return AUDIO_VOICE_INPUT_ROUTE
 
 
-def _optional_receipt_id(value: object) -> str | None:
+def _required_receipt_id(value: object) -> str:
     if isinstance(value, Mapping):
         candidate = value.get("receipt_id")
     else:
         candidate = getattr(value, "receipt_id", None)
-    if candidate is None:
-        return None
     if not isinstance(candidate, str) or not candidate.strip():
         raise ValueError(
-            "audio voice ingress observation sink returned invalid receipt_id"
+            "audio voice ingress observation sink must return a durable receipt_id"
         )
     return candidate.strip()
