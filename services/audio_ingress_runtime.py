@@ -11,6 +11,7 @@ from services.court_intent import Intent, normalize
 from services.execution_receipt_sink import (
     ExecutionReceiptLedger,
     IntentReceiptResolution,
+    RuntimeReceiptLedgerError,
     find_execution_receipt_ledger,
 )
 from services.runtime_pipeline import RuntimePipeline
@@ -131,7 +132,13 @@ class AudioIngressRuntimeHandler:
         wall_clock_seconds: Callable[[], float] = time,
     ) -> None:
         if pipeline.receipt_sink is not receipt_ledger:
-            resolved = find_execution_receipt_ledger(pipeline.receipt_sink)
+            try:
+                resolved = find_execution_receipt_ledger(pipeline.receipt_sink)
+            except RuntimeReceiptLedgerError as exc:
+                raise ValueError(
+                    "RuntimePipeline receipt sink does not contain the "
+                    "ExecutionReceiptLedger required by AudioIngressRuntimeHandler"
+                ) from exc
             if resolved is not receipt_ledger:
                 raise ValueError(
                     "RuntimePipeline must write through the same ExecutionReceiptLedger "
