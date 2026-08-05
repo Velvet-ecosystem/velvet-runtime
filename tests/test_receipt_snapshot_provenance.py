@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 from services.receipt_snapshot_provenance import (
     SNAPSHOT_DIGEST_FIELD,
     SNAPSHOT_SCHEMA_FIELD,
+    WRAPPED_RECEIPT_SINK_ATTRIBUTE,
     bind_receipt_sink_to_snapshot,
 )
 from services.system_identity_snapshot import build_system_identity_snapshot
@@ -64,6 +65,10 @@ class TestReceiptSnapshotProvenance(unittest.TestCase):
         self.assertEqual(stamped["payload"][SNAPSHOT_SCHEMA_FIELD], snapshot.schema)
         self.assertEqual(stamped["payload"]["state"], "authorized")
         self.assertEqual(result, "logged")
+        self.assertIs(
+            getattr(bound, WRAPPED_RECEIPT_SINK_ATTRIBUTE),
+            sink,
+        )
 
     def test_matching_existing_stamp_is_idempotent(self):
         temp, snapshot = self._snapshot()
