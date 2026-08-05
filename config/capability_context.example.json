@@ -7,6 +7,7 @@
       "status": "active",
       "proposed_capabilities": [
         "observe.telemetry",
+        "observe.audio.voice_input",
         "comfort.request",
         "visibility.request",
         "access.request",
@@ -19,6 +20,7 @@
       "status": "active",
       "proposed_capabilities": [
         "observe.telemetry",
+        "observe.audio.voice_input",
         "comfort.request"
       ]
     }
