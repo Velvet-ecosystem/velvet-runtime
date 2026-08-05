@@ -3,10 +3,12 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 import json
 from pathlib import Path
-from typing import Any, Callable, Dict, Union
+from typing import Any, Callable, Dict, Iterator, Union
 
 
 TERMINAL_RUNTIME_EVENTS = frozenset({
@@ -58,12 +60,32 @@ class ExecutionReceiptLedger:
         self._memory_retrieval_receipt_from_envelope = (
             memory_retrieval_receipt_from_envelope
         )
+        self._dispatch_binding: ContextVar[tuple[str, str] | None] = ContextVar(
+            f"runtime_receipt_dispatch_binding_{id(self)}",
+            default=None,
+        )
+
+    @contextmanager
+    def bind_dispatch(
+        self,
+        dispatch_id: str,
+        ingress_receipt_id: str,
+    ) -> Iterator[None]:
+        """Link receipts emitted in this context to one ingress dispatch."""
+        dispatch = _required_text(dispatch_id, "dispatch_id")
+        ingress = _required_text(ingress_receipt_id, "ingress_receipt_id")
+        token = self._dispatch_binding.set((dispatch, ingress))
+        try:
+            yield
+        finally:
+            self._dispatch_binding.reset(token)
 
     def __call__(self, envelope: Dict[str, Any]) -> Any:
-        payload = envelope.get("payload", {})
+        linked = self._with_dispatch_binding(envelope)
+        payload = linked.get("payload", {})
         output = payload.get("output") if isinstance(payload, dict) else None
         if (
-            envelope.get("event_type") == "EXECUTION_COMPLETED"
+            linked.get("event_type") == "EXECUTION_COMPLETED"
             and isinstance(payload, dict)
             and payload.get("executor_name") == "memory-recall"
             and isinstance(output, dict)
@@ -78,7 +100,7 @@ class ExecutionReceiptLedger:
                 }
                 for item in results
             ]
-            normalized = dict(envelope)
+            normalized = dict(linked)
             normalized["payload"] = {
                 **payload,
                 "query_event_id": output.get("query_event_id"),
@@ -89,7 +111,7 @@ class ExecutionReceiptLedger:
                 links,
             )
         else:
-            receipt = self._runtime_receipt_from_envelope(envelope)
+            receipt = self._runtime_receipt_from_envelope(linked)
         finalized = self.logger.log(receipt)
         if not _receipt_identifier(finalized):
             raise RuntimeReceiptLedgerError(
@@ -170,6 +192,25 @@ class ExecutionReceiptLedger:
             state="unseen",
             events=events,
         )
+
+    def _with_dispatch_binding(
+        self,
+        envelope: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        binding = self._dispatch_binding.get()
+        if binding is None:
+            return dict(envelope)
+        dispatch_id, ingress_receipt_id = binding
+        payload = envelope.get("payload")
+        if not isinstance(payload, dict):
+            payload = {}
+        linked = dict(envelope)
+        linked["payload"] = {
+            **payload,
+            "dispatch_id": dispatch_id,
+            "ingress_receipt_id": ingress_receipt_id,
+        }
+        return linked
 
     def _load_entries(self) -> list[dict[str, Any]]:
         entries: list[dict[str, Any]] = []
