@@ -10,6 +10,7 @@ from services.system_identity_snapshot import SystemIdentitySnapshot, verify_sys
 
 SNAPSHOT_DIGEST_FIELD = "system_identity_snapshot_digest"
 SNAPSHOT_SCHEMA_FIELD = "system_identity_snapshot_schema"
+WRAPPED_RECEIPT_SINK_ATTRIBUTE = "__velvet_wrapped_receipt_sink__"
 
 
 def bind_receipt_sink_to_snapshot(
@@ -43,4 +44,5 @@ def bind_receipt_sink_to_snapshot(
         }
         return receipt_sink(normalized)
 
+    setattr(bound_sink, WRAPPED_RECEIPT_SINK_ATTRIBUTE, receipt_sink)
     return bound_sink
