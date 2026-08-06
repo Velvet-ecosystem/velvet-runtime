@@ -6,15 +6,15 @@ It does not create a second Court. It does not authorize audio events because th
 
 ## Trust path
 
-One `audio.voice_input.ready` event crosses these boundaries:
+Every routed audio event crosses the same boundaries:
 
 1. the audio node writes the Event Protocol envelope to its durable retry journal
 2. the Runtime HTTP receiver durably accepts the canonical envelope and returns an ingress receipt
 3. the ordered dispatch worker claims the oldest unprocessed event under a lease
 4. `AudioIngressRuntimeHandler` uses the stable `runtime-dispatch-*` value as the Runtime `Intent.intent_id`
-5. Runtime Court evaluates `observe.audio.voice_input` for target `audio.voice_input`
-6. an approved token passes through the read-only audio voice-input safety gate
-7. the registered `audio-voice-input` executor publishes a bounded observation and requires its durable receipt
+5. Runtime Court evaluates the exact observation capability and target
+6. an approved token passes through the matching read-only safety gate
+7. the registered executor publishes a bounded observation and requires its durable receipt
 8. Velvet Receipts persists the terminal Court or execution receipt
 9. the dispatch worker stores that terminal receipt identifier and advances the lane
 
@@ -32,7 +32,7 @@ receipt_ledger = ExecutionReceiptLedger(
 )
 ```
 
-It still accepts ordinary Runtime receipt envelopes as a callable sink. It now also:
+It still accepts ordinary Runtime receipt envelopes as a callable sink. It also:
 
 - verifies the Velvet receipt hash chain before replay decisions
 - resolves receipts by stable Runtime intent ID
@@ -52,57 +52,27 @@ The terminal events are:
 
 ## Runtime pipeline assembly
 
-The same ledger instance must be supplied to `RuntimePipeline` and `AudioIngressRuntimeHandler`.
+The voice-input and addressed-text routes are provisioned independently. Supplying one observation sink does not silently enable the other route.
 
 ```python
-from services.approved_executor import ExecutorRegistry
-from services.audio_ingress_runtime import (
-    AudioIngressRouteRegistry,
-    AudioIngressRuntimeHandler,
-)
-from services.audio_voice_ingress_executor import register_audio_voice_ingress
-from services.execution_receipt_sink import ExecutionReceiptLedger
-from services.runtime_pipeline import RuntimePipeline
-from services.safety_gate_registry import SafetyGateRegistry
-
-executors = ExecutorRegistry()
-safety_gates = SafetyGateRegistry()
-receipt_ledger = ExecutionReceiptLedger(
-    "/var/lib/velvet-runtime/receipts.log"
-)
-
-voice_route = register_audio_voice_ingress(
-    executor_registry=executors,
-    safety_gate_registry=safety_gates,
-    observation_sink=runtime_audio_observation_sink,
-)
-
-pipeline = RuntimePipeline(
+pipeline = provision_runtime_pipeline(
     capability_context=capability_context,
-    court_policy_path=court_policy_path,
-    signing_key=court_signing_key,
-    executor_registry=executors,
-    safety_check=safety_gates.evaluate,
-    receipt_sink=receipt_ledger,
-    replay_ledger=token_replay_ledger,
+    paths=pipeline_paths,
+    audio_observation_sink=runtime_audio_input_observation_sink,
+    voice_request_observation_sink=runtime_voice_request_observation_sink,
 )
 
-handler = AudioIngressRuntimeHandler(
-    pipeline,
-    AudioIngressRouteRegistry((voice_route,)),
-    receipt_ledger,
-)
+binding = build_audio_ingress_runtime_binding(pipeline)
+handler = binding.handler
 ```
 
-`runtime_audio_observation_sink` must durably store or publish the bounded observation and return an object or mapping containing a non-empty `receipt_id`. Returning no receipt is an executor failure. Runtime then preserves `EXECUTION_FAILED`, and the ingress lane does not pretend the observation was completed.
+Each observation sink must durably store or publish its bounded observation and return an object or mapping containing a non-empty `receipt_id`. Returning no receipt is an executor failure. Runtime preserves `EXECUTION_FAILED`, and the ingress lane does not pretend the observation completed.
 
 `handler.dispatch(envelope, dispatch_id=..., ingress_receipt_id=...)` satisfies the structural `RuntimeIngressHandler` contract used by the durable worker in `velvet-audio-studio`.
 
 The Runtime repository remains the authority side of the boundary. The audio repository supplies transport, durable ingress, ordering, and worker leases.
 
-## Bounded route
-
-The first concrete route is deliberately narrow:
+## Voice-input readiness route
 
 ```text
 event type:    audio.voice_input.ready
@@ -120,9 +90,48 @@ Only these payload fields cross into the approved executor:
 - `selected_logical_name`
 - `confidence`
 
-Raw multichannel samples, mono samples, and unlisted payload fields are not executor parameters. They remain in the durable ingress evidence where access can be governed separately.
+Raw multichannel samples, mono samples, and unlisted payload fields are not executor parameters.
 
-This route proves that Runtime durably received a bounded voice-input observation. It does not transcribe speech, infer commands, grant physical control, or route an owner request to an actuator.
+This route proves that Runtime durably received a bounded voice-input readiness observation. It does not transcribe speech, infer commands, or grant physical control.
+
+## Wake-addressed voice request route
+
+```text
+event type:    audio.wake_name.matched
+action:        observe
+capability:    observe.audio.voice_request
+target:        audio.voice_request
+executor:      audio-voice-request
+completion:    observed
+idempotency:   idempotent
+interpretation: forbidden
+actuation:     forbidden
+```
+
+Only these payload fields cross into the approved executor:
+
+- `utterance_id`
+- `wake_name`
+- `request_text`
+- `request_text_length`
+- `transcript_confidence`
+- `command_authority`
+
+The full transcript, word timings, raw samples, and all unlisted fields remain outside the executor parameter boundary.
+
+The safety gate requires:
+
+- `command_authority` is exactly `false`
+- a non-empty trimmed utterance identity
+- a non-empty wake name with canonical whitespace
+- request text with canonical whitespace
+- request length that exactly matches the text
+- no more than 512 request characters
+- transcript confidence between 0 and 1 when supplied
+
+An empty request after a valid wake name is still a truthful observation. It may represent a user saying only "Velvet" and waiting for a response. It still carries no command authority.
+
+The destination observation records addressed text. It does not interpret the request, map it to a capability, identify the speaker, prove owner presence, select an executor, or perform actuation.
 
 ## Policy
 
@@ -130,15 +139,17 @@ The example capability-context and Court policy files include:
 
 ```text
 observe.audio.voice_input
+observe.audio.voice_request
 ```
 
-The guest example permits only the exact target:
+The guest example permits only the exact audio observation targets:
 
 ```text
 audio.voice_input
+audio.voice_request
 ```
 
-This is a read-only observation capability. It does not imply microphone administration, audio playback authority, command execution, or vehicle actuation.
+These capabilities permit read-only observations. They do not imply microphone administration, audio playback authority, command execution, or vehicle actuation.
 
 ## Crash-gap behavior
 
@@ -153,7 +164,7 @@ Before every pipeline submission, `AudioIngressRuntimeHandler` verifies and sear
 - Broken receipt hash chain: fail closed and do not execute.
 - Multiple terminal receipts: fail closed as contradictory evidence.
 
-Uncertain execution is an operator-reconciliation condition. Do not delete the start receipt, clear the replay ledger, or force the worker past the event. Preserve the evidence and determine whether the destination organ acted before recording a resolution through the appropriate Runtime recovery process.
+Uncertain execution is an operator-reconciliation condition. Preserve the evidence and determine whether the destination organ acted before recording a resolution through the appropriate Runtime recovery process.
 
 ## Current boundary
 
@@ -165,16 +176,19 @@ Implemented:
 - existing Runtime pipeline and replay ledger
 - canonical Velvet receipt sink and hash-chain verification
 - stable dispatch replay recovery
-- read-only voice-input executor and safety gate
-- durable observation receipt requirement
-- payload whitelist
+- separate read-only voice-input and voice-request executors
+- separate safety gates and opt-in provisioning sinks
+- durable observation receipt requirements
+- strict payload whitelists
+- explicit refusal of claimed command authority
 
 Not implemented by this binding:
 
-- speech transcription
-- wake-word decisions
+- speaker identity
+- owner or guest presence confirmation
 - command interpretation
 - command-to-capability mapping
+- interpreted-request approval
 - audio playback authority
 - physical actuation
 - automatic reconciliation of uncertain executions
