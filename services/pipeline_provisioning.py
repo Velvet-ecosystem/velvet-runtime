@@ -10,6 +10,7 @@ from typing import Any, Callable, Mapping, Optional
 
 from services.approved_executor import ExecutorRegistry
 from services.audio_voice_ingress_executor import register_audio_voice_ingress
+from services.audio_voice_request_executor import register_audio_voice_request
 from services.can_observation_executor import register_can_observation
 from services.can_signal_summary_executor import register_can_signal_summary
 from services.can_ghost_executor import register_can_ghost
@@ -50,6 +51,7 @@ def provision_runtime_pipeline(
     paths: Optional[PipelinePaths] = None,
     recall_provider: Optional[Callable[[str, int], Any]] = None,
     audio_observation_sink: Optional[Callable[[Mapping[str, Any]], Any]] = None,
+    voice_request_observation_sink: Optional[Callable[[Mapping[str, Any]], Any]] = None,
     identity_snapshot: Optional[Any] = None,
 ) -> RuntimePipeline:
     resolved = paths or resolve_pipeline_paths()
@@ -98,6 +100,12 @@ def provision_runtime_pipeline(
             executor_registry=executor_registry,
             safety_gate_registry=safety_gate_registry,
             observation_sink=audio_observation_sink,
+        )
+    if voice_request_observation_sink is not None:
+        register_audio_voice_request(
+            executor_registry=executor_registry,
+            safety_gate_registry=safety_gate_registry,
+            observation_sink=voice_request_observation_sink,
         )
     if recall_provider is not None:
         register_memory_recall(
