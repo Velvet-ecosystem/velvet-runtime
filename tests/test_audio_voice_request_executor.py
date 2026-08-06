@@ -96,7 +96,11 @@ class TestAudioVoiceRequestExecutor(unittest.TestCase):
         values.update(updates)
         return values
 
-    def submit(self, parameters, observation_sink=lambda evidence: {"receipt_id": "voice-request-receipt-1"}):
+    def submit(
+        self,
+        parameters,
+        observation_sink=lambda evidence: {"receipt_id": "voice-request-receipt-1"},
+    ):
         with tempfile.TemporaryDirectory() as tmp:
             route, pipeline, receipts, executors, gates = self.pipeline(
                 Path(tmp), observation_sink
@@ -108,6 +112,11 @@ class TestAudioVoiceRequestExecutor(unittest.TestCase):
                 now=100,
             )
         return route, result, receipts, executors, gates
+
+    def safety_error(self, result):
+        self.assertIsNotNone(result.execution)
+        self.assertTrue(result.execution.errors)
+        return result.execution.errors[0]
 
     def test_addressed_text_completes_as_read_only_observation(self):
         observations = []
@@ -162,7 +171,7 @@ class TestAudioVoiceRequestExecutor(unittest.TestCase):
         self.assertFalse(result.executed)
         self.assertEqual(result.state, "safety_denied")
         self.assertEqual(observations, [])
-        self.assertIn("command_authority=false", result.safety_reason)
+        self.assertIn("command_authority=false", self.safety_error(result))
         self.assertEqual(
             [item["event_type"] for item in receipts],
             ["COURT_AUTHORIZED", "EXECUTION_DENIED"],
@@ -173,7 +182,7 @@ class TestAudioVoiceRequestExecutor(unittest.TestCase):
 
         self.assertFalse(result.executed)
         self.assertEqual(result.state, "safety_denied")
-        self.assertIn("does not match", result.safety_reason)
+        self.assertIn("does not match", self.safety_error(result))
 
     def test_oversized_request_is_denied(self):
         request = "x" * (MAX_VOICE_REQUEST_CHARACTERS + 1)
@@ -184,7 +193,7 @@ class TestAudioVoiceRequestExecutor(unittest.TestCase):
 
         self.assertFalse(result.executed)
         self.assertEqual(result.state, "safety_denied")
-        self.assertIn("bounded observation limit", result.safety_reason)
+        self.assertIn("bounded observation limit", self.safety_error(result))
 
     def test_noncanonical_whitespace_is_denied(self):
         _, result, _, _, _ = self.submit(self.parameters(
@@ -194,14 +203,14 @@ class TestAudioVoiceRequestExecutor(unittest.TestCase):
 
         self.assertFalse(result.executed)
         self.assertEqual(result.state, "safety_denied")
-        self.assertIn("canonical whitespace", result.safety_reason)
+        self.assertIn("canonical whitespace", self.safety_error(result))
 
     def test_confidence_outside_unit_interval_is_denied(self):
         _, result, _, _, _ = self.submit(self.parameters(transcript_confidence=1.2))
 
         self.assertFalse(result.executed)
         self.assertEqual(result.state, "safety_denied")
-        self.assertIn("between 0 and 1", result.safety_reason)
+        self.assertIn("between 0 and 1", self.safety_error(result))
 
     def test_missing_observation_receipt_becomes_execution_failure(self):
         _, result, receipts, _, _ = self.submit(
