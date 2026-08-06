@@ -13,6 +13,10 @@ from services.audio_voice_ingress_executor import (
     AUDIO_VOICE_INGRESS_EXECUTOR,
     AUDIO_VOICE_INPUT_ROUTE,
 )
+from services.audio_voice_request_executor import (
+    AUDIO_VOICE_REQUEST_EXECUTOR,
+    AUDIO_VOICE_REQUEST_ROUTE,
+)
 from services.execution_receipt_sink import (
     ExecutionReceiptLedger,
     find_execution_receipt_ledger,
@@ -32,13 +36,19 @@ def build_audio_ingress_runtime_binding(
     pipeline: RuntimePipeline,
 ) -> AudioIngressRuntimeBinding:
     """Build the worker-facing handler without inventing Court or route policy."""
-    if not pipeline.executor_registry.is_registered(AUDIO_VOICE_INGRESS_EXECUTOR):
+    available_routes = []
+    if pipeline.executor_registry.is_registered(AUDIO_VOICE_INGRESS_EXECUTOR):
+        available_routes.append(AUDIO_VOICE_INPUT_ROUTE)
+    if pipeline.executor_registry.is_registered(AUDIO_VOICE_REQUEST_EXECUTOR):
+        available_routes.append(AUDIO_VOICE_REQUEST_ROUTE)
+    if not available_routes:
         raise ValueError(
-            "Runtime pipeline does not contain the audio voice ingress executor; "
-            "provision it with audio_observation_sink"
+            "Runtime pipeline contains no audio ingress executors; provision it with "
+            "audio_observation_sink and/or voice_request_observation_sink"
         )
+
     receipt_ledger = find_execution_receipt_ledger(pipeline.receipt_sink)
-    routes = AudioIngressRouteRegistry((AUDIO_VOICE_INPUT_ROUTE,))
+    routes = AudioIngressRouteRegistry(tuple(available_routes))
     handler = AudioIngressRuntimeHandler(
         pipeline,
         routes,
