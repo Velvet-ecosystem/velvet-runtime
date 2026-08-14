@@ -12,11 +12,10 @@ from collections.abc import Mapping
 from time import monotonic
 from typing import Any, Callable, Dict, Optional, Tuple
 
-from velvet_event_protocol.event_schema import VelvetEvent
-
 
 HealthRenderer = Callable[[str, Mapping[str, Any]], Optional[Any]]
-EventPublisher = Callable[[VelvetEvent], Any]
+EventPublisher = Callable[[Any], Any]
+EventFactory = Callable[..., Any]
 Clock = Callable[[], float]
 
 
@@ -30,16 +29,22 @@ class SelfHealthSpeechBridge:
         *,
         repeat_window_seconds: float = 60.0,
         clock: Clock = monotonic,
+        event_factory: Optional[EventFactory] = None,
     ) -> None:
         if repeat_window_seconds < 0:
             raise ValueError("repeat_window_seconds cannot be negative")
+        if event_factory is None:
+            from velvet_event_protocol.event_schema import VelvetEvent
+
+            event_factory = VelvetEvent
         self._render_draft = render_draft
         self._publish_event = publish_event
+        self._event_factory = event_factory
         self._repeat_window_seconds = float(repeat_window_seconds)
         self._clock = clock
         self._last_spoken = {}  # type: Dict[str, Tuple[Tuple[str, ...], float]]
 
-    def handle(self, event: VelvetEvent) -> Optional[VelvetEvent]:
+    def handle(self, event: Any) -> Optional[Any]:
         """Handle one EventBus event and speak only meaningful health changes."""
 
         event_type = str(getattr(event, "event_type", "")).strip().upper()
@@ -70,7 +75,7 @@ class SelfHealthSpeechBridge:
             _text(payload.get("event_id"))
             or _text(getattr(event, "event_id", None))
         )
-        speech_event = VelvetEvent(
+        speech_event = self._event_factory(
             source="velvet-language",
             event_type=draft.event_type,
             payload=dict(draft.payload),
