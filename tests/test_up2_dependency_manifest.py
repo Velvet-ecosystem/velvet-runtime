@@ -34,6 +34,7 @@ class Up2DependencyManifestTests(unittest.TestCase):
         imports = set(manifest["python_imports"])
         self.assertIn("velvet_event_protocol", imports)
         self.assertIn("velvet_continuity", imports)
+        self.assertIn("velvet_language", imports)
         self.assertIn("yaml", imports)
 
     def test_interface_is_optional_for_baseline_and_required_for_preferred(self):
