@@ -1,9 +1,10 @@
 """Mandatory runtime wiring for Velvet.
 
 This module assembles the event bus, receipt validator, event enforcer,
-hardened publishing callable, and one inert advisory-brain presence probe.
-The brain receives no runtime references and is never attached. Interface
-lifecycle activation occurs only after continuity and secure boot complete.
+hardened publishing callable, optional self-health speech bridge, and one inert
+advisory-brain presence probe. The brain receives no runtime references and is
+never attached. Interface lifecycle activation occurs only after continuity and
+secure boot complete.
 """
 
 from velvet_logging.logger import get_logger
@@ -11,6 +12,37 @@ from receipts.validator import JsonlReceiptValidator
 from services.safe_publish import make_safe_publish
 
 logger = get_logger("velvet.wiring")
+
+
+def _attach_self_health_speech(bus, enforcer) -> bool:
+    """Join verified HealthEvents to Language without exposing Runtime internals."""
+
+    try:
+        from velvet_language.self_health_expression import (
+            build_self_health_speech_draft,
+        )
+        from services.self_health_speech_bridge import SelfHealthSpeechBridge
+    except ImportError as exc:
+        logger.warning(
+            "[BOOT] Self-health speech inactive because Language is unavailable: %s",
+            exc,
+        )
+        return False
+
+    try:
+        bridge = SelfHealthSpeechBridge(
+            build_self_health_speech_draft,
+            lambda event: enforcer.publish(event=event),
+        )
+        bus.subscribe(bridge.handle)
+    except Exception as exc:
+        logger.warning("[BOOT] Self-health speech bridge could not attach: %s", exc)
+        return False
+
+    logger.info(
+        "[BOOT] Self-health speech bridge attached. Health truth remains Runtime-owned."
+    )
+    return True
 
 
 def build_runtime() -> dict:
@@ -42,6 +74,8 @@ def build_runtime() -> dict:
 
     safe_publish = make_safe_publish(enforcer)
     logger.info("[BOOT] Hardened safe_publish callable built.")
+
+    _attach_self_health_speech(bus, enforcer)
 
     try:
         from velvet_ai_core.brain_adapter import BrainAdapter
