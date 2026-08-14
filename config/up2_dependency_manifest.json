@@ -23,7 +23,8 @@
   "python_imports": [
     "yaml",
     "velvet_event_protocol",
-    "velvet_continuity"
+    "velvet_continuity",
+    "velvet_language"
   ],
   "optional_python_imports": [
     "velvet_vehicle_can"
