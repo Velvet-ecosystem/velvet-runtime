@@ -20,6 +20,7 @@ DEPENDENCIES = (
     "velvet-continuity-spine",
     "velvet-receipts",
     "velvet-ai-core",
+    "velvet-language",
     "velvet-vehicle-can",
 )
 
