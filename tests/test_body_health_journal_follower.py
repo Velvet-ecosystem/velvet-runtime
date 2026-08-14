@@ -104,6 +104,42 @@ class BodyHealthJournalFollowerTests(unittest.TestCase):
         self.assertEqual(published[0]["payload"]["event_id"], "new-health")
         self.assertEqual(published[0]["receipt_id"], "new-health")
 
+    def test_current_unhealthy_snapshot_is_forwarded_once_at_boot(self):
+        journal = self.root / "events.jsonl"
+        journal.touch()
+        snapshot = self.root / "body-state.json"
+        degraded = _health_record("degraded-health")
+        recovered = _health_record("recovered-health", state_after="ONLINE")
+        snapshot.write_text(
+            json.dumps({
+                "schema": "velvet.runtime.body_state_snapshot.v1",
+                "captured_at": 1.0,
+                "generated_monotonic": 1.0,
+                "record_count": 3,
+                "sensor_count": 1,
+                "health_event_count": 2,
+                "records": [degraded, recovered, _sensor_record()],
+                "receipt_ids": ["degraded-health", "recovered-health", "sensor-1"],
+                "mode": "display-only",
+                "read_only": True,
+                "authority": "none",
+                "actuation_granted": False,
+                "actuation_performed": False,
+            }),
+            encoding="utf-8",
+        )
+        published = []
+        follower = BodyHealthJournalFollower(
+            journal,
+            lambda **kwargs: published.append(kwargs),
+        )
+        follower.prime()
+
+        self.assertEqual(follower.publish_current_unhealthy(snapshot), 1)
+        self.assertEqual(len(published), 1)
+        self.assertEqual(published[0]["event_type"], "HEALTH_DEGRADED")
+        self.assertEqual(published[0]["payload"]["event_id"], "degraded-health")
+
     def test_sensor_and_malformed_lines_do_not_enter_health_path(self):
         journal = self.root / "events.jsonl"
         journal.touch()
