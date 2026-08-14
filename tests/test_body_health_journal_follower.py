@@ -1,4 +1,7 @@
 import json
+from pathlib import Path
+import tempfile
+import unittest
 
 from services.body_health_journal_follower import BodyHealthJournalFollower
 
@@ -74,69 +77,90 @@ def _append(path, value, newline=True):
             handle.write(b"\n")
 
 
-def test_prime_ignores_historical_journal_entries(tmp_path) -> None:
-    journal = tmp_path / "events.jsonl"
-    _append(journal, _health_record("old-health"))
-    published = []
-    follower = BodyHealthJournalFollower(journal, lambda **kwargs: published.append(kwargs))
+class BodyHealthJournalFollowerTests(unittest.TestCase):
+    def setUp(self):
+        self._temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self._temporary.name)
 
-    follower.prime()
-    assert follower.poll() == 0
-    assert published == []
+    def tearDown(self):
+        self._temporary.cleanup()
 
-    _append(journal, _health_record("new-health"))
-    assert follower.poll() == 1
-    assert published[0]["event_type"] == "HEALTH_DEGRADED"
-    assert published[0]["payload"]["event_id"] == "new-health"
-    assert published[0]["receipt_id"] == "new-health"
+    def test_prime_ignores_historical_journal_entries(self):
+        journal = self.root / "events.jsonl"
+        _append(journal, _health_record("old-health"))
+        published = []
+        follower = BodyHealthJournalFollower(
+            journal,
+            lambda **kwargs: published.append(kwargs),
+        )
+
+        follower.prime()
+        self.assertEqual(follower.poll(), 0)
+        self.assertEqual(published, [])
+
+        _append(journal, _health_record("new-health"))
+        self.assertEqual(follower.poll(), 1)
+        self.assertEqual(published[0]["event_type"], "HEALTH_DEGRADED")
+        self.assertEqual(published[0]["payload"]["event_id"], "new-health")
+        self.assertEqual(published[0]["receipt_id"], "new-health")
+
+    def test_sensor_and_malformed_lines_do_not_enter_health_path(self):
+        journal = self.root / "events.jsonl"
+        journal.touch()
+        published = []
+        follower = BodyHealthJournalFollower(
+            journal,
+            lambda **kwargs: published.append(kwargs),
+        )
+        follower.prime()
+
+        _append(journal, _sensor_record())
+        _append(journal, b"not-json")
+        _append(journal, _health_record("health-2", state_after="ONLINE"))
+
+        self.assertEqual(follower.poll(), 1)
+        self.assertEqual(len(published), 1)
+        self.assertEqual(published[0]["event_type"], "HEALTH_RECOVERED")
+
+    def test_partial_line_waits_for_completion(self):
+        journal = self.root / "events.jsonl"
+        journal.touch()
+        published = []
+        follower = BodyHealthJournalFollower(
+            journal,
+            lambda **kwargs: published.append(kwargs),
+        )
+        follower.prime()
+
+        raw = json.dumps(_health_record("partial-health")).encode("utf-8")
+        split = len(raw) // 2
+        with journal.open("ab") as handle:
+            handle.write(raw[:split])
+
+        self.assertEqual(follower.poll(), 0)
+        self.assertEqual(published, [])
+
+        with journal.open("ab") as handle:
+            handle.write(raw[split:] + b"\n")
+
+        self.assertEqual(follower.poll(), 1)
+        self.assertEqual(published[0]["payload"]["event_id"], "partial-health")
+
+    def test_missing_journal_is_nonfatal_and_new_file_is_read(self):
+        journal = self.root / "later.jsonl"
+        published = []
+        follower = BodyHealthJournalFollower(
+            journal,
+            lambda **kwargs: published.append(kwargs),
+        )
+
+        follower.prime()
+        self.assertEqual(follower.poll(), 0)
+
+        _append(journal, _health_record("late-health"))
+        self.assertEqual(follower.poll(), 1)
+        self.assertEqual(published[0]["payload"]["event_id"], "late-health")
 
 
-def test_sensor_and_malformed_lines_do_not_enter_health_path(tmp_path) -> None:
-    journal = tmp_path / "events.jsonl"
-    journal.touch()
-    published = []
-    follower = BodyHealthJournalFollower(journal, lambda **kwargs: published.append(kwargs))
-    follower.prime()
-
-    _append(journal, _sensor_record())
-    _append(journal, b"not-json")
-    _append(journal, _health_record("health-2", state_after="ONLINE"))
-
-    assert follower.poll() == 1
-    assert len(published) == 1
-    assert published[0]["event_type"] == "HEALTH_RECOVERED"
-
-
-def test_partial_line_waits_for_completion(tmp_path) -> None:
-    journal = tmp_path / "events.jsonl"
-    journal.touch()
-    published = []
-    follower = BodyHealthJournalFollower(journal, lambda **kwargs: published.append(kwargs))
-    follower.prime()
-
-    raw = json.dumps(_health_record("partial-health")).encode("utf-8")
-    split = len(raw) // 2
-    with journal.open("ab") as handle:
-        handle.write(raw[:split])
-
-    assert follower.poll() == 0
-    assert published == []
-
-    with journal.open("ab") as handle:
-        handle.write(raw[split:] + b"\n")
-
-    assert follower.poll() == 1
-    assert published[0]["payload"]["event_id"] == "partial-health"
-
-
-def test_missing_journal_is_nonfatal_and_new_file_is_read(tmp_path) -> None:
-    journal = tmp_path / "later.jsonl"
-    published = []
-    follower = BodyHealthJournalFollower(journal, lambda **kwargs: published.append(kwargs))
-
-    follower.prime()
-    assert follower.poll() == 0
-
-    _append(journal, _health_record("late-health"))
-    assert follower.poll() == 1
-    assert published[0]["payload"]["event_id"] == "late-health"
+if __name__ == "__main__":
+    unittest.main()
