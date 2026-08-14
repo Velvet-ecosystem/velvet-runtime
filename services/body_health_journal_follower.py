@@ -10,7 +10,6 @@ replay historical records on ordinary startup and grants no authority.
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional
 
@@ -49,7 +48,7 @@ class BodyHealthJournalFollower:
 
         try:
             self._offset = self.journal_path.stat().st_size
-        except FileNotFoundError:
+        except OSError:
             self._offset = 0
         self._initialized = True
 
@@ -62,7 +61,7 @@ class BodyHealthJournalFollower:
 
         try:
             size = self.journal_path.stat().st_size
-        except FileNotFoundError:
+        except OSError:
             self._offset = 0
             return 0
 
@@ -72,7 +71,12 @@ class BodyHealthJournalFollower:
             self._offset = 0
 
         published = 0
-        with self.journal_path.open("rb") as handle:
+        try:
+            handle = self.journal_path.open("rb")
+        except OSError:
+            return 0
+
+        with handle:
             handle.seek(self._offset)
             while True:
                 line_start = handle.tell()
