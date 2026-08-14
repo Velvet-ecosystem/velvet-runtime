@@ -1,8 +1,25 @@
 import unittest
 
-from velvet_event_protocol.event_schema import VelvetEvent
-
 from services.self_health_speech_bridge import SelfHealthSpeechBridge
+
+
+class _Event:
+    def __init__(
+        self,
+        *,
+        event_id=None,
+        source="unknown",
+        event_type="",
+        payload=None,
+        metadata=None,
+        parent_event_id=None,
+    ):
+        self.event_id = event_id or "test-event"
+        self.source = source
+        self.event_type = event_type
+        self.payload = {} if payload is None else payload
+        self.metadata = {} if metadata is None else metadata
+        self.parent_event_id = parent_event_id
 
 
 class _Draft:
@@ -52,11 +69,20 @@ def _health_event(**overrides):
         "receipt_id": "health-1",
     }
     payload.update(overrides)
-    return VelvetEvent(
+    return _Event(
         event_id="bus-health-1",
         source="velvet-runtime",
         event_type="HEALTH_{}".format(payload["event_type"]),
         payload=payload,
+    )
+
+
+def _bridge(renderer, published, **kwargs):
+    return SelfHealthSpeechBridge(
+        renderer,
+        published.append,
+        event_factory=_Event,
+        **kwargs,
     )
 
 
@@ -69,7 +95,7 @@ class SelfHealthSpeechBridgeTests(unittest.TestCase):
             rendered.append((event_type, payload["module_id"]))
             return _Draft()
 
-        bridge = SelfHealthSpeechBridge(renderer, published.append)
+        bridge = _bridge(renderer, published)
         result = bridge.handle(_health_event())
 
         self.assertIsNotNone(result)
@@ -84,10 +110,10 @@ class SelfHealthSpeechBridgeTests(unittest.TestCase):
 
     def test_non_health_events_are_ignored(self):
         published = []
-        bridge = SelfHealthSpeechBridge(lambda *_: _Draft(), published.append)
+        bridge = _bridge(lambda *_: _Draft(), published)
 
         result = bridge.handle(
-            VelvetEvent(event_type="SENSOR_PACKET_OBSERVED", payload={"module_id": "gps"})
+            _Event(event_type="SENSOR_PACKET_OBSERVED", payload={"module_id": "gps"})
         )
 
         self.assertIsNone(result)
@@ -95,7 +121,7 @@ class SelfHealthSpeechBridgeTests(unittest.TestCase):
 
     def test_renderer_can_suppress_healthy_startup(self):
         published = []
-        bridge = SelfHealthSpeechBridge(lambda *_: None, published.append)
+        bridge = _bridge(lambda *_: None, published)
 
         result = bridge.handle(_health_event(event_type="ONLINE", state_after="ONLINE"))
         self.assertIsNone(result)
@@ -104,9 +130,9 @@ class SelfHealthSpeechBridgeTests(unittest.TestCase):
     def test_duplicate_fault_is_suppressed_inside_repeat_window(self):
         published = []
         times = iter((10.0, 20.0, 80.0))
-        bridge = SelfHealthSpeechBridge(
+        bridge = _bridge(
             lambda *_: _Draft(),
-            published.append,
+            published,
             repeat_window_seconds=60.0,
             clock=lambda: next(times),
         )
@@ -118,9 +144,9 @@ class SelfHealthSpeechBridgeTests(unittest.TestCase):
 
     def test_recovery_is_not_suppressed_as_duplicate_fault(self):
         published = []
-        bridge = SelfHealthSpeechBridge(
+        bridge = _bridge(
             lambda event_type, payload: _Draft(text=event_type),
-            published.append,
+            published,
             repeat_window_seconds=60.0,
             clock=lambda: 10.0,
         )
