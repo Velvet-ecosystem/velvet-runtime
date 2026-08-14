@@ -1,4 +1,4 @@
-from types import SimpleNamespace
+import unittest
 
 from velvet_event_protocol.event_schema import VelvetEvent
 
@@ -60,80 +60,82 @@ def _health_event(**overrides):
     )
 
 
-def test_health_event_becomes_authority_free_speech_event() -> None:
-    published = []
-    rendered = []
+class SelfHealthSpeechBridgeTests(unittest.TestCase):
+    def test_health_event_becomes_authority_free_speech_event(self):
+        published = []
+        rendered = []
 
-    def renderer(event_type, payload):
-        rendered.append((event_type, payload["module_id"]))
-        return _Draft()
+        def renderer(event_type, payload):
+            rendered.append((event_type, payload["module_id"]))
+            return _Draft()
 
-    bridge = SelfHealthSpeechBridge(renderer, published.append)
-    result = bridge.handle(_health_event())
+        bridge = SelfHealthSpeechBridge(renderer, published.append)
+        result = bridge.handle(_health_event())
 
-    assert result is not None
-    assert rendered == [("HEALTH_DEGRADED", "microphone-input-main")]
-    assert published == [result]
-    assert result.source == "velvet-language"
-    assert result.event_type == "language.expression.speech_requested"
-    assert result.parent_event_id == "health-1"
-    assert result.metadata["contract"] == "velvet.speech-expression.v1"
-    assert result.metadata["authority"] == "none"
-    assert result.payload["actuation_authority"] is False
+        self.assertIsNotNone(result)
+        self.assertEqual(rendered, [("HEALTH_DEGRADED", "microphone-input-main")])
+        self.assertEqual(published, [result])
+        self.assertEqual(result.source, "velvet-language")
+        self.assertEqual(result.event_type, "language.expression.speech_requested")
+        self.assertEqual(result.parent_event_id, "health-1")
+        self.assertEqual(result.metadata["contract"], "velvet.speech-expression.v1")
+        self.assertEqual(result.metadata["authority"], "none")
+        self.assertFalse(result.payload["actuation_authority"])
+
+    def test_non_health_events_are_ignored(self):
+        published = []
+        bridge = SelfHealthSpeechBridge(lambda *_: _Draft(), published.append)
+
+        result = bridge.handle(
+            VelvetEvent(event_type="SENSOR_PACKET_OBSERVED", payload={"module_id": "gps"})
+        )
+
+        self.assertIsNone(result)
+        self.assertEqual(published, [])
+
+    def test_renderer_can_suppress_healthy_startup(self):
+        published = []
+        bridge = SelfHealthSpeechBridge(lambda *_: None, published.append)
+
+        result = bridge.handle(_health_event(event_type="ONLINE", state_after="ONLINE"))
+        self.assertIsNone(result)
+        self.assertEqual(published, [])
+
+    def test_duplicate_fault_is_suppressed_inside_repeat_window(self):
+        published = []
+        times = iter((10.0, 20.0, 80.0))
+        bridge = SelfHealthSpeechBridge(
+            lambda *_: _Draft(),
+            published.append,
+            repeat_window_seconds=60.0,
+            clock=lambda: next(times),
+        )
+
+        self.assertIsNotNone(bridge.handle(_health_event()))
+        self.assertIsNone(bridge.handle(_health_event()))
+        self.assertIsNotNone(bridge.handle(_health_event()))
+        self.assertEqual(len(published), 2)
+
+    def test_recovery_is_not_suppressed_as_duplicate_fault(self):
+        published = []
+        bridge = SelfHealthSpeechBridge(
+            lambda event_type, payload: _Draft(text=event_type),
+            published.append,
+            repeat_window_seconds=60.0,
+            clock=lambda: 10.0,
+        )
+
+        self.assertIsNotNone(bridge.handle(_health_event()))
+        recovery = _health_event(
+            event_id="health-2",
+            event_type="RECOVERED",
+            state_before="DEGRADED",
+            state_after="ONLINE",
+            severity="NOTICE",
+        )
+        self.assertIsNotNone(bridge.handle(recovery))
+        self.assertEqual(len(published), 2)
 
 
-def test_non_health_events_are_ignored() -> None:
-    published = []
-    bridge = SelfHealthSpeechBridge(lambda *_: _Draft(), published.append)
-
-    result = bridge.handle(
-        VelvetEvent(event_type="SENSOR_PACKET_OBSERVED", payload={"module_id": "gps"})
-    )
-
-    assert result is None
-    assert published == []
-
-
-def test_renderer_can_suppress_healthy_startup() -> None:
-    published = []
-    bridge = SelfHealthSpeechBridge(lambda *_: None, published.append)
-
-    assert bridge.handle(_health_event(event_type="ONLINE", state_after="ONLINE")) is None
-    assert published == []
-
-
-def test_duplicate_fault_is_suppressed_inside_repeat_window() -> None:
-    published = []
-    times = iter((10.0, 20.0, 80.0))
-    bridge = SelfHealthSpeechBridge(
-        lambda *_: _Draft(),
-        published.append,
-        repeat_window_seconds=60.0,
-        clock=lambda: next(times),
-    )
-
-    assert bridge.handle(_health_event()) is not None
-    assert bridge.handle(_health_event()) is None
-    assert bridge.handle(_health_event()) is not None
-    assert len(published) == 2
-
-
-def test_recovery_is_not_suppressed_as_duplicate_fault() -> None:
-    published = []
-    bridge = SelfHealthSpeechBridge(
-        lambda event_type, payload: _Draft(text=event_type),
-        published.append,
-        repeat_window_seconds=60.0,
-        clock=lambda: 10.0,
-    )
-
-    assert bridge.handle(_health_event()) is not None
-    recovery = _health_event(
-        event_id="health-2",
-        event_type="RECOVERED",
-        state_before="DEGRADED",
-        state_after="ONLINE",
-        severity="NOTICE",
-    )
-    assert bridge.handle(recovery) is not None
-    assert len(published) == 2
+if __name__ == "__main__":
+    unittest.main()
