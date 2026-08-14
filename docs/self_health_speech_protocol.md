@@ -1,6 +1,6 @@
 # Automatic Self-Health Speech Protocol
 
-Velvet Runtime automatically forwards newly admitted body-health transitions into the existing Language speech path so verified system degradation does not have to be discovered indirectly through worse conversation or a manual connection check.
+Velvet Runtime automatically forwards verified body-health state and new health transitions into the existing Language speech path so system degradation does not have to be discovered indirectly through worse conversation or a manual connection check.
 
 This is part of Velvet's broader reflection protocol / self-assessment behavior. It is not implemented inside the literal `velvet-ai-core/ai_brain/native_brain/reflection.py` receipt reviewer.
 
@@ -14,6 +14,8 @@ standard HealthEvent
         |
         v
 BodyStateSnapshotBridge
+        |
+        +--> current body-state snapshot
         |
         +--> owner-only body-state journal
                     |
@@ -38,23 +40,27 @@ BodyStateSnapshotBridge
 
 The downstream speech-expression contract is already owned by Velvet Language and consumed by Velvet Audio Studio. This Runtime bridge does not select TTS engines, speakers, ALSA devices, gain, or physical output routes.
 
-## Journal follower
+## Current-state boot check and journal follower
 
-`services/body_health_journal_follower.py` follows the existing body-state evidence journal.
+`services/body_health_journal_follower.py` uses both the existing bounded body-state snapshot and the evidence journal.
 
-Default path:
+Default paths:
 
 ```text
+/run/velvet/body-state.json
 /var/lib/velvet-runtime/body-state/events.jsonl
 ```
 
-The path may be overridden with:
+They may be overridden with:
 
 ```text
+VELVET_BODY_SNAPSHOT_PATH
 VELVET_BODY_JOURNAL_PATH
 ```
 
-On normal Runtime startup the follower arms at the current journal tail. Historical records are not replayed as fresh spoken warnings. Newly appended complete records are validated through the existing body-state contract; only `family: health` records enter the automatic self-health path. Sensor records, malformed JSON, unsafe records, oversized lines, and incomplete trailing writes are ignored or deferred without creating speech authority.
+On normal Runtime startup the follower first checks the current snapshot and forwards only health records whose current state is unhealthy. Healthy, normal, online, available, or recovered records remain quiet. This means a fault that already existed before Runtime started is not silently grandfathered into the session.
+
+The follower then arms at the current journal tail. Historical journal records are not replayed as fresh spoken warnings. Newly appended complete records are validated through the existing body-state contract; only `family: health` records enter the automatic self-health path. Sensor records, malformed JSON, unsafe records, oversized lines, and incomplete trailing writes are ignored or deferred without creating speech authority.
 
 ## Speech bridge
 
@@ -79,7 +85,7 @@ The bridge never diagnoses a failure from conversational quality. It speaks only
 
 If Language is unavailable during Runtime assembly, Runtime continues without gaining a hidden fallback authority and logs that self-health speech is inactive. The missing Language dependency is also visible to Founder dependency verification.
 
-If the body-health journal does not yet exist, the follower remains nonfatal and begins reading when the file appears.
+If the body-health snapshot or journal does not yet exist, the follower remains nonfatal. It begins following the journal when the file appears, and future health transitions still enter the automatic path.
 
 ## Boundary
 
