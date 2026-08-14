@@ -8,9 +8,8 @@ speech expression through the Event Protocol enforcer.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from time import monotonic
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Mapping, Optional, Tuple
 
 
 HealthRenderer = Callable[[str, Mapping[str, Any]], Optional[Any]]
