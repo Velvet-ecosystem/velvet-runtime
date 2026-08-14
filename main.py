@@ -70,12 +70,24 @@ def _body_health_follower(runtime):
             "/var/lib/velvet-runtime/body-state/events.jsonl",
         )
     )
+    snapshot_path = Path(
+        os.environ.get(
+            "VELVET_BODY_SNAPSHOT_PATH",
+            "/run/velvet/body-state.json",
+        )
+    )
     follower = BodyHealthJournalFollower(journal_path, runtime["publish"])
     follower.prime()
+    current_unhealthy = follower.publish_current_unhealthy(snapshot_path)
     logger.info(
         "[BOOT] Body-health follower armed at current journal tail: %s",
         journal_path,
     )
+    if current_unhealthy:
+        logger.info(
+            "[HEALTH] Forwarded %d current unhealthy body state(s) at boot.",
+            current_unhealthy,
+        )
     return follower
 
 
