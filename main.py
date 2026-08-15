@@ -1,12 +1,14 @@
 """Primary entrypoint for the Velvet AI runtime."""
 
 import os
+from pathlib import Path
 import signal
 import sys
 import time
 
 from velvet_logging.logger import get_logger
 from runtime_wiring import build_runtime
+from services.body_health_journal_follower import BodyHealthJournalFollower
 from services.continuity_activation import (
     continuity_boot_passed,
     load_configured_identity_context,
@@ -59,6 +61,34 @@ def _startup_budget_ms():
         logger.warning("[BOOT] Ignoring non-positive VELVET_STARTUP_BUDGET_MS value.")
         return None
     return value
+
+
+def _body_health_follower(runtime):
+    journal_path = Path(
+        os.environ.get(
+            "VELVET_BODY_JOURNAL_PATH",
+            "/var/lib/velvet-runtime/body-state/events.jsonl",
+        )
+    )
+    snapshot_path = Path(
+        os.environ.get(
+            "VELVET_BODY_SNAPSHOT_PATH",
+            "/run/velvet/body-state.json",
+        )
+    )
+    follower = BodyHealthJournalFollower(journal_path, runtime["publish"])
+    follower.prime()
+    current_unhealthy = follower.publish_current_unhealthy(snapshot_path)
+    logger.info(
+        "[BOOT] Body-health follower armed at current journal tail: %s",
+        journal_path,
+    )
+    if current_unhealthy:
+        logger.info(
+            "[HEALTH] Forwarded %d current unhealthy body state(s) at boot.",
+            current_unhealthy,
+        )
+    return follower
 
 
 def main():
@@ -118,6 +148,9 @@ def main():
         f"interface_started={optional_status.interface_started}."
     )
 
+    health_follower = _body_health_follower(runtime)
+    startup_timer.mark("body health follower")
+
     logger.info(
         "[BOOT] Execution pipeline provisioned with four read-only executors "
         "and four local routes; physical authority remains disabled."
@@ -130,6 +163,12 @@ def main():
 
     logger.info("[BOOT] Entering idle loop.")
     while not _SHUTDOWN:
+        forwarded_health = health_follower.poll()
+        if forwarded_health:
+            logger.info(
+                "[HEALTH] Forwarded %d new body-health transition(s) into Runtime.",
+                forwarded_health,
+            )
         _ = (execution_pipeline, local_gateway)
         time.sleep(1)
 

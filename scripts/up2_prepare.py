@@ -20,6 +20,7 @@ DEPENDENCIES = (
     "velvet-continuity-spine",
     "velvet-receipts",
     "velvet-ai-core",
+    "velvet-language",
     "velvet-vehicle-can",
 )
 
@@ -99,7 +100,11 @@ def main(argv=None):
 
     paths = [root]
     for name in DEPENDENCIES:
-        paths.append(clone_if_missing(workspace, name))
+        dependency = clone_if_missing(workspace, name)
+        paths.append(dependency)
+        src_path = dependency / "src"
+        if src_path.is_dir():
+            paths.append(src_path)
 
     pth = site_packages(python) / "velvet-local-workspace.pth"
     pth.write_text("\n".join(str(path.resolve()) for path in paths) + "\n", encoding="utf-8")
