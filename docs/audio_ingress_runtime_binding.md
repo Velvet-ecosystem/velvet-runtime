@@ -197,4 +197,6 @@ Not implemented by this binding:
 
 On 2026-08-29 this branch was rechecked against current Runtime `main`, which now includes automatic self-health speech and Learning Mode eligibility. GitHub reports the pull request mergeable without file conflicts.
 
-This documentation-only checkpoint changes no authority, execution, or actuation behavior. Its purpose is to retrigger Runtime pull-request CI against the current merge result before squash merge.
+The first revalidation run exposed an unrelated `main` test-harness regression: a new safety-scaffold test imported pytest even though Runtime CI uses standard-library unittest. Runtime PR #113 converted that safety coverage to unittest and was merged after a clean CI run.
+
+This documentation-only checkpoint changes no authority, execution, or actuation behavior. Its purpose is to retrigger Runtime pull-request CI against the corrected current merge result before squash merge.
