@@ -169,6 +169,7 @@ def main():
                 "[HEALTH] Forwarded %d new body-health transition(s) into Runtime.",
                 forwarded_health,
             )
+        runtime["service_tick"]()
         _ = (execution_pipeline, local_gateway)
         time.sleep(1)
 
