@@ -1,0 +1,56 @@
+# SPDX-License-Identifier: GPL-3.0-only
+[Unit]
+Description=Velvet Runtime (Founder speech-enabled read-only service)
+Documentation=file://@RUNTIME_ROOT@/docs/up2_speech_systemd_install.md
+After=local-fs.target network-online.target
+Wants=local-fs.target network-online.target
+Conflicts=velvet-runtime.service
+ConditionPathIsDirectory=@RUNTIME_ROOT@
+ConditionPathIsExecutable=@RUNTIME_ROOT@/.venv/bin/python
+ConditionPathExists=/etc/velvet/runtime-speech.env
+ConditionPathExists=/etc/velvet/audio-speech.token
+
+[Service]
+Type=simple
+User=@SERVICE_USER@
+Group=@SERVICE_GROUP@
+WorkingDirectory=@RUNTIME_ROOT@
+Environment=PYTHONUNBUFFERED=1
+Environment=VELVET_RUNTIME_MODE=development
+Environment=VELVET_PHYSICAL_AUTHORITY=disabled
+EnvironmentFile=/etc/velvet/runtime-speech.env
+ExecStart=@RUNTIME_ROOT@/.venv/bin/python @RUNTIME_ROOT@/velvet_cli.py dev-start
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=20s
+KillSignal=SIGTERM
+UMask=0077
+
+# This is a separate operating posture from the observation-only proof service.
+# IPv4/IPv6 sockets are permitted only so Runtime can reach the single fixed
+# Audio Studio address rendered below. IPAddressDeny keeps every other network
+# destination unavailable to this service.
+RestrictAddressFamilies=AF_UNIX AF_CAN AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=@AUDIO_HOST@
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=@RUNTIME_ROOT@/.velvet-dev /opt/velvet/state
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target
