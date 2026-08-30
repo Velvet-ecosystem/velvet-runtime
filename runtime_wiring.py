@@ -59,8 +59,10 @@ def _attach_speech_expression_egress(bus):
         return None
 
     try:
+        from services.speech_egress_transport_policy import (
+            ReceiptVerifiedAudioSpeechHttpTransport,
+        )
         from services.speech_expression_egress import (
-            AudioSpeechHttpTransport,
             SpeechExpressionEgress,
             SqliteSpeechEgressOutbox,
         )
@@ -77,7 +79,7 @@ def _attach_speech_expression_egress(bus):
         max_pending = _positive_int_env("VELVET_AUDIO_SPEECH_MAX_PENDING", 256)
 
         outbox = SqliteSpeechEgressOutbox(database, max_pending=max_pending)
-        transport = AudioSpeechHttpTransport(
+        transport = ReceiptVerifiedAudioSpeechHttpTransport(
             endpoint,
             timeout_seconds=timeout_seconds,
             bearer_token_file=token_file,
