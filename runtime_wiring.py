@@ -11,6 +11,7 @@ import os
 
 from velvet_logging.logger import get_logger
 from receipts.validator import JsonlReceiptValidator
+from services.runtime_maintenance import configure_speech_egress
 from services.safe_publish import make_safe_publish
 
 logger = get_logger("velvet.wiring")
@@ -151,17 +152,7 @@ def build_runtime() -> dict:
     logger.info("[BOOT] Hardened safe_publish callable built.")
 
     _attach_self_health_speech(bus, enforcer)
-    speech_egress = _attach_speech_expression_egress(bus)
-
-    def service_tick():
-        """Run bounded internal maintenance without exposing Runtime internals."""
-        if speech_egress is None:
-            return 0
-        try:
-            return speech_egress.poll(max_events=1)
-        except Exception as exc:
-            logger.warning("[RUNTIME] Audio speech egress tick failed: %s", exc)
-            return 0
+    configure_speech_egress(_attach_speech_expression_egress(bus))
 
     try:
         from velvet_ai_core.brain_adapter import BrainAdapter
@@ -178,7 +169,6 @@ def build_runtime() -> dict:
     runtime = {
         "publish": safe_publish,
         "receipt_validator": validator.validate,
-        "service_tick": service_tick,
     }
     logger.info("[BOOT] Mandatory runtime core wiring complete.")
     return runtime
