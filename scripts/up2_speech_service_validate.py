@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import grp
 import json
 import pathlib
 import stat
@@ -58,7 +59,11 @@ def parse_env(path: pathlib.Path) -> Dict[str, str]:
     return values
 
 
-def secure_file_errors(path: pathlib.Path, label: str) -> List[str]:
+def secure_file_errors(
+    path: pathlib.Path,
+    label: str,
+    expected_group: str,
+) -> List[str]:
     errors = []  # type: List[str]
     try:
         metadata = path.stat()
@@ -66,6 +71,20 @@ def secure_file_errors(path: pathlib.Path, label: str) -> List[str]:
         return ["%s unavailable: %s" % (label, exc)]
     if not stat.S_ISREG(metadata.st_mode):
         errors.append("%s is not a regular file" % label)
+        return errors
+    if metadata.st_uid != 0:
+        errors.append("%s must be owned by root" % label)
+    try:
+        expected_gid = grp.getgrnam(expected_group).gr_gid
+    except KeyError:
+        errors.append("service group %r does not exist" % expected_group)
+        expected_gid = None
+    if expected_gid is not None and metadata.st_gid != expected_gid:
+        errors.append("%s must be group-owned by %s" % (label, expected_group))
+    if not metadata.st_mode & stat.S_IRGRP:
+        errors.append("%s must be readable by the service group" % label)
+    if metadata.st_mode & (stat.S_IWGRP | stat.S_IXGRP):
+        errors.append("%s service-group access must be read-only" % label)
     if metadata.st_mode & (stat.S_IROTH | stat.S_IWOTH | stat.S_IXOTH):
         errors.append("%s must not be accessible to other users" % label)
     return errors
@@ -80,6 +99,8 @@ def validate_properties(properties: Dict[str, str], runtime_root: pathlib.Path) 
 
     if properties.get("User") in (None, "", "root"):
         errors.append("speech service must run as a dedicated non-root user")
+    if properties.get("Group") in (None, "", "root"):
+        errors.append("speech service must run with a dedicated non-root group")
 
     exec_start = properties.get("ExecStart", "")
     expected_cli = str(runtime_root / "velvet_cli.py")
@@ -123,7 +144,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     runtime_root = pathlib.Path(args.runtime_root).resolve()
-    property_names = list(REQUIRED_PROPERTIES) + ["User", "ExecStart", "ReadWritePaths"]
+    property_names = list(REQUIRED_PROPERTIES) + [
+        "User",
+        "Group",
+        "ExecStart",
+        "ReadWritePaths",
+    ]
     report = {
         "ok": False,
         "service": args.service,
@@ -157,8 +183,6 @@ def main(argv: Optional[List[str]] = None) -> int:
             report["errors"].append(
                 "speech token path must be %s" % EXPECTED_TOKEN_PATH
             )
-        report["errors"].extend(secure_file_errors(ENV_PATH, "speech environment"))
-        report["errors"].extend(secure_file_errors(token_path, "speech bearer token"))
 
         show = command_output(
             ["systemctl", "show", args.service, "--property=" + ",".join(property_names)]
@@ -166,6 +190,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         properties = parse_show(show)
         report["properties"] = properties
         report["errors"].extend(validate_properties(properties, runtime_root))
+
+        service_group = properties.get("Group", "")
+        if service_group:
+            report["errors"].extend(
+                secure_file_errors(ENV_PATH, "speech environment", service_group)
+            )
+            report["errors"].extend(
+                secure_file_errors(token_path, "speech bearer token", service_group)
+            )
 
         unit_text = command_output(["systemctl", "cat", args.service])
         report["errors"].extend(validate_unit_text(unit_text, audio_host))
