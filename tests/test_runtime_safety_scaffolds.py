@@ -1,5 +1,3 @@
-import pytest
-
 from runtime_safety_scaffolds import (
     ALLOWED,
     AUTHORITY_MISSING,
@@ -161,7 +159,7 @@ def test_protected_reserve_can_be_borrowed_only_with_fast_reclaim():
 
 
 def test_protected_reserve_rejects_impossible_budget():
-    with pytest.raises(ValueError, match="protected_reserve"):
+    try:
         ProtectedReserve(
             resource_name="ram",
             total_resource=10.0,
@@ -169,6 +167,10 @@ def test_protected_reserve_rejects_impossible_budget():
             temporarily_borrowable=1.0,
             reclaim_latency_ms=100,
         ).validate()
+    except ValueError as exc:
+        assert "protected_reserve" in str(exc)
+    else:
+        raise AssertionError("invalid protected reserve must be rejected")
 
 
 def test_optional_ai_requires_reserved_headroom():
