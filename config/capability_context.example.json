@@ -8,6 +8,7 @@
       "proposed_capabilities": [
         "observe.telemetry",
         "observe.audio.voice_input",
+        "observe.audio.voice_request",
         "comfort.request",
         "visibility.request",
         "access.request",
@@ -21,6 +22,7 @@
       "proposed_capabilities": [
         "observe.telemetry",
         "observe.audio.voice_input",
+        "observe.audio.voice_request",
         "comfort.request"
       ]
     }
