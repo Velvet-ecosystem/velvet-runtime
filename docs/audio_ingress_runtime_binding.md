@@ -192,3 +192,9 @@ Not implemented by this binding:
 - audio playback authority
 - physical actuation
 - automatic reconciliation of uncertain executions
+
+## Revalidation checkpoint
+
+On 2026-08-29 this branch was rechecked against current Runtime `main`, which now includes automatic self-health speech and Learning Mode eligibility. GitHub reports the pull request mergeable without file conflicts.
+
+This documentation-only checkpoint changes no authority, execution, or actuation behavior. Its purpose is to retrigger Runtime pull-request CI against the current merge result before squash merge.
