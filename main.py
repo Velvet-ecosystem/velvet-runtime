@@ -18,6 +18,7 @@ from services.continuity_activation import (
 from services.observation_gateway import build_observation_gateway
 from services.optional_subsystems import activate_optional_subsystems
 from services.recovery_mode import enter_recovery_mode
+from services.runtime_maintenance import poll_runtime_maintenance
 from services.secure_boot_services import (
     ModuleLoadingError,
     PipelineProvisioningError,
@@ -169,7 +170,7 @@ def main():
                 "[HEALTH] Forwarded %d new body-health transition(s) into Runtime.",
                 forwarded_health,
             )
-        runtime["service_tick"]()
+        poll_runtime_maintenance()
         _ = (execution_pipeline, local_gateway)
         time.sleep(1)
 
