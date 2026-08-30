@@ -1,14 +1,17 @@
 """Mandatory runtime wiring for Velvet.
 
 This module assembles the event bus, receipt validator, event enforcer,
-hardened publishing callable, optional self-health speech bridge, and one inert
-advisory-brain presence probe. The brain receives no runtime references and is
-never attached. Interface lifecycle activation occurs only after continuity and
-secure boot complete.
+hardened publishing callable, optional self-health speech bridge, optional
+speech-expression egress, and one inert advisory-brain presence probe. The
+brain receives no runtime references and is never attached. Interface lifecycle
+activation occurs only after continuity and secure boot complete.
 """
+
+import os
 
 from velvet_logging.logger import get_logger
 from receipts.validator import JsonlReceiptValidator
+from services.runtime_maintenance import configure_speech_egress
 from services.safe_publish import make_safe_publish
 
 logger = get_logger("velvet.wiring")
@@ -45,6 +48,81 @@ def _attach_self_health_speech(bus, enforcer) -> bool:
     return True
 
 
+def _attach_speech_expression_egress(bus):
+    """Attach Audio delivery only when an operator explicitly configures it."""
+
+    endpoint = os.environ.get("VELVET_AUDIO_SPEECH_ENDPOINT", "").strip()
+    if not endpoint:
+        logger.info(
+            "[BOOT] Audio speech egress inactive; VELVET_AUDIO_SPEECH_ENDPOINT is unset."
+        )
+        return None
+
+    try:
+        from services.speech_egress_transport_policy import (
+            ReceiptVerifiedAudioSpeechHttpTransport,
+        )
+        from services.speech_expression_egress import (
+            SpeechExpressionEgress,
+            SqliteSpeechEgressOutbox,
+        )
+
+        database = os.environ.get(
+            "VELVET_AUDIO_SPEECH_EGRESS_DB",
+            "/opt/velvet/state/audio/speech-egress.sqlite3",
+        )
+        token_file = os.environ.get("VELVET_AUDIO_SPEECH_TOKEN_FILE")
+        timeout_seconds = _positive_float_env(
+            "VELVET_AUDIO_SPEECH_TIMEOUT_SECONDS",
+            0.75,
+        )
+        max_pending = _positive_int_env("VELVET_AUDIO_SPEECH_MAX_PENDING", 256)
+
+        outbox = SqliteSpeechEgressOutbox(database, max_pending=max_pending)
+        transport = ReceiptVerifiedAudioSpeechHttpTransport(
+            endpoint,
+            timeout_seconds=timeout_seconds,
+            bearer_token_file=token_file,
+        )
+        egress = SpeechExpressionEgress(outbox, transport)
+        bus.subscribe(egress.handle)
+    except Exception as exc:
+        logger.warning("[BOOT] Audio speech egress could not attach: %s", exc)
+        return None
+
+    logger.info(
+        "[BOOT] Audio speech egress attached at %s. Runtime retains no audio authority.",
+        endpoint,
+    )
+    return egress
+
+
+def _positive_float_env(name, default):
+    raw = os.environ.get(name)
+    if raw is None:
+        return float(default)
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise ValueError("%s must be numeric" % name) from exc
+    if value <= 0:
+        raise ValueError("%s must be positive" % name)
+    return value
+
+
+def _positive_int_env(name, default):
+    raw = os.environ.get(name)
+    if raw is None:
+        return int(default)
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ValueError("%s must be an integer" % name) from exc
+    if value <= 0:
+        raise ValueError("%s must be positive" % name)
+    return value
+
+
 def build_runtime() -> dict:
     """Assemble and return the mandatory Velvet runtime core."""
 
@@ -76,6 +154,7 @@ def build_runtime() -> dict:
     logger.info("[BOOT] Hardened safe_publish callable built.")
 
     _attach_self_health_speech(bus, enforcer)
+    configure_speech_egress(_attach_speech_expression_egress(bus))
 
     try:
         from velvet_ai_core.brain_adapter import BrainAdapter
