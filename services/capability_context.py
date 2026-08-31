@@ -8,17 +8,25 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Union
 
+from services.court_authority import authority_rank
+
 
 @dataclass(frozen=True)
 class CapabilityContext:
     policy_id: str
+    # Deployment/session label used to select the capability policy, for example
+    # ``owner_present``. This is not itself a Court authority class.
     authority_profile: str
+    # Canonical Court authority class explicitly declared by the selected policy,
+    # for example ``owner`` or ``guest``.
+    court_authority: str
     profile_id: str
     body_id: str
     surface: str
     session_id: str
     proposed_capabilities: Tuple[str, ...]
     authority_profiles: Optional[Tuple[str, ...]] = None
+    court_authorities: Optional[Tuple[str, ...]] = None
     authorization_required: bool = True
     actuation_granted: bool = False
 
@@ -37,17 +45,28 @@ def build_capability_context(
     if not isinstance(policies, list) or not policies:
         raise ValueError("capability context requires a non-empty policies list")
 
-    authority_profile = session.profile.authority_profile
+    authority_profile = _text(getattr(session.profile, "authority_profile", None))
+    if not authority_profile:
+        raise ValueError("session profile requires a deployment authority_profile")
+
     selected = [
         item for item in policies
         if isinstance(item, dict)
-        and item.get("authority_profile") == authority_profile
+        and _text(item.get("authority_profile")) == authority_profile
         and item.get("status") == "active"
     ]
     if len(selected) != 1:
         raise ValueError("capability context requires exactly one active matching policy")
 
     policy = selected[0]
+    court_authority = _required_text(policy, "court_authority")
+    try:
+        authority_rank(court_authority)
+    except ValueError as exc:
+        raise ValueError("capability policy declares an unregistered court_authority") from exc
+    if court_authority == "unknown":
+        raise ValueError("capability policy may not activate unknown Court authority")
+
     proposed = policy.get("proposed_capabilities")
     if not isinstance(proposed, list):
         raise ValueError("proposed_capabilities must be a list")
@@ -65,11 +84,13 @@ def build_capability_context(
     return CapabilityContext(
         policy_id=_required_text(policy, "policy_id"),
         authority_profile=authority_profile,
+        court_authority=court_authority,
         authority_profiles=(authority_profile,),
-        profile_id=session.profile.profile_id,
-        body_id=body.body_id,
-        surface=body.surface,
-        session_id=session.session_id,
+        court_authorities=(court_authority,),
+        profile_id=_text(session.profile.profile_id),
+        body_id=_text(body.body_id),
+        surface=_text(body.surface),
+        session_id=_text(session.session_id),
         proposed_capabilities=normalized,
     )
 
