@@ -17,14 +17,15 @@ class CapabilityContext:
     # Deployment/session label used to select the capability policy, for example
     # ``owner_present``. This is not itself a Court authority class.
     authority_profile: str
-    # Canonical Court authority class explicitly declared by the selected policy,
-    # for example ``owner`` or ``guest``.
-    court_authority: str
     profile_id: str
     body_id: str
     surface: str
     session_id: str
     proposed_capabilities: Tuple[str, ...]
+    # Canonical Court authority class explicitly declared by a built policy.
+    # The empty default preserves compatibility for direct non-Court construction;
+    # Court will fail such a context rather than infer authority from its label.
+    court_authority: str = ""
     authority_profiles: Optional[Tuple[str, ...]] = None
     court_authorities: Optional[Tuple[str, ...]] = None
     authorization_required: bool = True
@@ -84,14 +85,14 @@ def build_capability_context(
     return CapabilityContext(
         policy_id=_required_text(policy, "policy_id"),
         authority_profile=authority_profile,
+        profile_id=session.profile.profile_id,
+        body_id=body.body_id,
+        surface=body.surface,
+        session_id=session.session_id,
+        proposed_capabilities=normalized,
         court_authority=court_authority,
         authority_profiles=(authority_profile,),
         court_authorities=(court_authority,),
-        profile_id=_text(session.profile.profile_id),
-        body_id=_text(body.body_id),
-        surface=_text(body.surface),
-        session_id=_text(session.session_id),
-        proposed_capabilities=normalized,
     )
 
 
