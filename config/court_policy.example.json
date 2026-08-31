@@ -35,16 +35,25 @@
       "token_ttl_seconds": 15
     },
     {
-      "policy_id": "emergency_incident_default",
+      "policy_id": "emergency_visibility_default",
       "status": "active",
       "allowed_capabilities": [
-        "visibility.request",
-        "access.request"
+        "visibility.request"
       ],
       "allowed_targets": [
         "vehicle.visibility.hazards",
         "vehicle.visibility.cabin",
-        "vehicle.visibility.exterior",
+        "vehicle.visibility.exterior"
+      ],
+      "token_ttl_seconds": 10
+    },
+    {
+      "policy_id": "emergency_access_default",
+      "status": "active",
+      "allowed_capabilities": [
+        "access.request"
+      ],
+      "allowed_targets": [
         "vehicle.access.door.driver",
         "vehicle.access.door.passenger",
         "vehicle.access.doors.all"
