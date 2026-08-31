@@ -13,7 +13,10 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Tuple
 
-from services.emergency_action_eligibility import EmergencyEligibilityDecision
+from services.emergency_action_eligibility import (
+    EmergencyEligibilityDecision,
+    EmergencyIncidentContext,
+)
 from services.responder_action_intake import ResponderActionCandidate
 
 
@@ -105,43 +108,59 @@ class IncidentActionPolicyDecision:
 def evaluate_incident_action_policy(
     candidate: ResponderActionCandidate,
     emergency: EmergencyEligibilityDecision,
+    emergency_context: EmergencyIncidentContext,
     evidence: IncidentActionEvidence,
 ) -> IncidentActionPolicyDecision:
     """Evaluate whether a responder request may advance toward Court resolution.
 
-    Emergency-first eligibility must already be established. A successful result
-    means only that the proposal may advance to a later trusted resolver. It is
-    not Court authorization and contains no executable mapping.
+    Emergency-first eligibility must already be established and still bind to the
+    same active incident. A successful result means only that the proposal may
+    advance to a later trusted resolver. It is not Court authorization and
+    contains no executable mapping.
     """
 
     if not isinstance(candidate, ResponderActionCandidate):
         raise TypeError("candidate must be ResponderActionCandidate")
     if not isinstance(emergency, EmergencyEligibilityDecision):
         raise TypeError("emergency must be EmergencyEligibilityDecision")
+    if not isinstance(emergency_context, EmergencyIncidentContext):
+        raise TypeError("emergency_context must be EmergencyIncidentContext")
     if not isinstance(evidence, IncidentActionEvidence):
         raise TypeError("evidence must be IncidentActionEvidence")
 
+    family = _classify(candidate.action_name)
+
     if candidate.authority != "none" or candidate.requires_runtime_court is not True:
         return _deny(
-            candidate,
             "invalid-proposal-boundary",
-            _classify(candidate.action_name),
+            family,
             "proposal no longer preserves the responder authority boundary",
+        )
+
+    if candidate.incident_id != emergency_context.incident_id:
+        return _deny(
+            "incident-context-mismatch",
+            family,
+            "responder proposal does not match the emergency incident context",
+        )
+
+    if not emergency_context.active or not emergency_context.activation_verified:
+        return _deny(
+            "emergency-context-not-active-verified",
+            family,
+            "incident action policy requires an active verified emergency context",
         )
 
     if not emergency.eligible or emergency.priority_band != "life-safety":
         return _deny(
-            candidate,
             "emergency-first-not-established",
-            _classify(candidate.action_name),
+            family,
             "responder action policy requires verified emergency-first eligibility",
+            emergency_established=False,
         )
-
-    family = _classify(candidate.action_name)
 
     if family is IncidentActionFamily.MOTION_OR_POWER:
         return _deny(
-            candidate,
             "separate-emergency-maneuver-policy-required",
             family,
             "motion and powertrain requests cannot advance from responder conversation policy",
@@ -149,7 +168,6 @@ def evaluate_incident_action_policy(
 
     if family is IncidentActionFamily.UNKNOWN:
         return _deny(
-            candidate,
             "action-not-policy-mapped",
             family,
             "unknown responder action has no incident policy mapping",
@@ -236,17 +254,18 @@ def _advance(
 
 
 def _deny(
-    candidate: ResponderActionCandidate,
     state: str,
     family: IncidentActionFamily,
     reason: str,
+    *,
+    emergency_established: bool = True,
 ) -> IncidentActionPolicyDecision:
     return IncidentActionPolicyDecision(
         may_advance=False,
         state=state,
         action_family=family,
-        priority_band="life-safety" if state != "emergency-first-not-established" else "ordinary",
-        priority_rank=0 if state != "emergency-first-not-established" else 100,
+        priority_band="life-safety" if emergency_established else "ordinary",
+        priority_rank=0 if emergency_established else 100,
         required_evidence=(),
         missing_evidence=(),
         requires_runtime_court=True,
