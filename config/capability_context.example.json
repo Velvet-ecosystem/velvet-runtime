@@ -4,6 +4,7 @@
     {
       "policy_id": "owner_present_default",
       "authority_profile": "owner_present",
+      "court_authority": "owner",
       "status": "active",
       "proposed_capabilities": [
         "observe.telemetry",
@@ -18,6 +19,7 @@
     {
       "policy_id": "guest_restricted_default",
       "authority_profile": "guest_restricted",
+      "court_authority": "guest",
       "status": "active",
       "proposed_capabilities": [
         "observe.telemetry",
