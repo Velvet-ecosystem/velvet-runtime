@@ -19,34 +19,42 @@ from services.incident_action_policy import (
 from services.responder_action_intake import ResponderActionCandidate
 
 
-def candidate(action_name="hazards-on"):
+def candidate(action_name="hazards-on", incident_id="incident-42"):
     return ResponderActionCandidate(
         request_id="request-1",
-        incident_id="incident-42",
+        incident_id=incident_id,
         action_name=action_name,
         source="responder-conversation",
     )
 
 
-def emergency(cand=None):
-    cand = cand or candidate()
-    return evaluate_emergency_first_eligibility(
-        cand,
-        EmergencyIncidentContext(
-            incident_id="incident-42",
-            active=True,
-            activation=EmergencyActivation.CONFIRMED_EMERGENCY,
-            activation_verified=True,
-        ),
+def context(
+    incident_id="incident-42",
+    *,
+    active=True,
+    activation_verified=True,
+    activation=EmergencyActivation.CONFIRMED_EMERGENCY,
+):
+    return EmergencyIncidentContext(
+        incident_id=incident_id,
+        active=active,
+        activation=activation,
+        activation_verified=activation_verified,
     )
+
+
+def emergency(cand, ctx):
+    return evaluate_emergency_first_eligibility(cand, ctx)
 
 
 class IncidentActionPolicyTests(unittest.TestCase):
     def test_visibility_action_advances_immediately_in_verified_emergency(self):
         cand = candidate("hazards-on")
+        ctx = context()
         decision = evaluate_incident_action_policy(
             cand,
-            emergency(cand),
+            emergency(cand, ctx),
+            ctx,
             IncidentActionEvidence(),
         )
 
@@ -65,9 +73,11 @@ class IncidentActionPolicyTests(unittest.TestCase):
 
     def test_rescue_access_waits_only_for_specific_missing_evidence(self):
         cand = candidate("unlock.driver-door")
+        ctx = context()
         decision = evaluate_incident_action_policy(
             cand,
-            emergency(cand),
+            emergency(cand, ctx),
+            ctx,
             IncidentActionEvidence(
                 vehicle_stationary_verified=True,
                 rescue_access_needed=True,
@@ -83,9 +93,11 @@ class IncidentActionPolicyTests(unittest.TestCase):
 
     def test_rescue_access_advances_when_required_evidence_is_present(self):
         cand = candidate("unlock.driver-door")
+        ctx = context()
         decision = evaluate_incident_action_policy(
             cand,
-            emergency(cand),
+            emergency(cand, ctx),
+            ctx,
             IncidentActionEvidence(
                 vehicle_stationary_verified=True,
                 rescue_access_needed=True,
@@ -118,9 +130,11 @@ class IncidentActionPolicyTests(unittest.TestCase):
         ):
             with self.subTest(action=action):
                 cand = candidate(action)
+                ctx = context()
                 decision = evaluate_incident_action_policy(
                     cand,
-                    emergency(cand),
+                    emergency(cand, ctx),
+                    ctx,
                     IncidentActionEvidence(
                         vehicle_stationary_verified=True,
                         rescue_access_needed=True,
@@ -134,9 +148,11 @@ class IncidentActionPolicyTests(unittest.TestCase):
 
     def test_unknown_action_fails_closed(self):
         cand = candidate("open-mystery-panel")
+        ctx = context()
         decision = evaluate_incident_action_policy(
             cand,
-            emergency(cand),
+            emergency(cand, ctx),
+            ctx,
             IncidentActionEvidence(),
         )
         self.assertFalse(decision.may_advance)
@@ -145,24 +161,38 @@ class IncidentActionPolicyTests(unittest.TestCase):
 
     def test_emergency_first_must_be_established(self):
         cand = candidate("hazards-on")
-        not_emergency = evaluate_emergency_first_eligibility(
-            cand,
-            EmergencyIncidentContext(
-                incident_id="incident-42",
-                active=True,
-                activation=EmergencyActivation.MANUAL_EMERGENCY_PROTOCOL,
-                activation_verified=False,
-            ),
+        ctx = context(
+            activation=EmergencyActivation.MANUAL_EMERGENCY_PROTOCOL,
+            activation_verified=False,
         )
+        not_emergency = emergency(cand, ctx)
         decision = evaluate_incident_action_policy(
             cand,
             not_emergency,
+            ctx,
             IncidentActionEvidence(),
         )
         self.assertFalse(decision.may_advance)
-        self.assertEqual(decision.state, "emergency-first-not-established")
-        self.assertEqual(decision.priority_band, "ordinary")
-        self.assertEqual(decision.priority_rank, 100)
+        self.assertEqual(decision.state, "emergency-context-not-active-verified")
+        self.assertEqual(decision.priority_band, "life-safety")
+        self.assertEqual(decision.priority_rank, 0)
+
+    def test_candidate_must_match_emergency_incident_context(self):
+        cand = candidate("hazards-on", incident_id="incident-other")
+        other_ctx = context(incident_id="incident-other")
+        eligible_from_other = emergency(cand, other_ctx)
+        current_ctx = context(incident_id="incident-42")
+
+        decision = evaluate_incident_action_policy(
+            cand,
+            eligible_from_other,
+            current_ctx,
+            IncidentActionEvidence(),
+        )
+
+        self.assertFalse(decision.may_advance)
+        self.assertEqual(decision.state, "incident-context-mismatch")
+        self.assertFalse(decision.creates_intent)
 
     def test_evidence_values_must_be_real_booleans(self):
         with self.assertRaises(TypeError):
