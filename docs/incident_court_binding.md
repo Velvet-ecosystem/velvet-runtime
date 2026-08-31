@@ -22,7 +22,13 @@ The binder creates a temporary incident context with:
 ```text
 authority_profile = verified_incident_emergency
 court_authority   = emergency
-policy_id          = emergency_incident_default
+```
+
+Its Court policy is selected from the already-resolved canonical capability, not from responder wording:
+
+```text
+visibility.request -> emergency_visibility_default
+access.request     -> emergency_access_default
 ```
 
 Its profile and session identifiers are deterministically derived from the incident rather than copied from the person who was using the vehicle before the emergency.
@@ -50,23 +56,29 @@ Binding requires all of the following:
 - active body ID and surface are normalized;
 - capability and logical target are already resolved and normalized.
 
-## Bounded emergency Court policy
+## Bounded emergency Court policies
 
-`emergency_incident_default` currently allows only:
+The emergency policies are deliberately split by capability family so Court can reject a cross-family capability/target combination even if an upstream object is malformed.
 
-- `visibility.request`
-- `access.request`
+### `emergency_visibility_default`
 
-and only the reviewed logical targets:
+Allows only:
 
-- hazards;
-- cabin visibility;
-- exterior visibility;
-- driver door;
-- passenger door;
-- all doors.
+- capability `visibility.request`;
+- `vehicle.visibility.hazards`;
+- `vehicle.visibility.cabin`;
+- `vehicle.visibility.exterior`.
 
-It has no wildcard target and uses a 10-second token lifetime.
+### `emergency_access_default`
+
+Allows only:
+
+- capability `access.request`;
+- `vehicle.access.door.driver`;
+- `vehicle.access.door.passenger`;
+- `vehicle.access.doors.all`.
+
+Neither policy has a wildcard target. Both currently use a 10-second token lifetime.
 
 Motion, steering, braking, throttle, shifting, propulsion, and engine-control capabilities are absent. They remain in the separate Charlotte/emergency-maneuver safety architecture.
 
@@ -120,3 +132,5 @@ Those are later gates, not omissions to shortcut.
 **Court authorization is permission to approach the executor boundary. It is not proof that anything moved.**
 
 **An incident may outrank an owner session without becoming the owner session.**
+
+**Least privilege applies inside emergency mode too: visibility authority and rescue-access authority are separate Court policies.**
