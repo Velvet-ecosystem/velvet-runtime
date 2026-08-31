@@ -25,9 +25,13 @@ from services.responder_action_intake import ResponderActionCandidate
 
 EMERGENCY_DEPLOYMENT_AUTHORITY = "verified_incident_emergency"
 EMERGENCY_COURT_AUTHORITY = "emergency"
-EMERGENCY_COURT_POLICY_ID = "emergency_incident_default"
 EMERGENCY_CONTEXT_KIND = "incident-emergency"
 RESPONDER_IDENTITY_STATE = "unresolved-responder"
+
+EMERGENCY_COURT_POLICIES = {
+    "visibility.request": "emergency_visibility_default",
+    "access.request": "emergency_access_default",
+}
 
 
 @dataclass(frozen=True)
@@ -102,6 +106,10 @@ def bind_incident_court_candidate(
         requested_at=requested_at,
     )
 
+    policy_id = EMERGENCY_COURT_POLICIES.get(resolution.capability)
+    if policy_id is None:
+        raise ValueError("resolved capability has no incident emergency Court policy")
+
     incident_digest = _digest(responder_candidate.incident_id)
     request_digest = _digest("{}:{}".format(
         responder_candidate.incident_id,
@@ -113,7 +121,7 @@ def bind_incident_court_candidate(
     intent_id = "emergency.request.{}".format(request_digest)
 
     context = IncidentCourtContext(
-        policy_id=EMERGENCY_COURT_POLICY_ID,
+        policy_id=policy_id,
         authority_profile=EMERGENCY_DEPLOYMENT_AUTHORITY,
         court_authority=EMERGENCY_COURT_AUTHORITY,
         profile_id=profile_id,
@@ -176,8 +184,12 @@ def authorize_incident_court_candidate(
         raise TypeError("candidate must be IncidentCourtCandidate")
     if not isinstance(now, int) or now < 0:
         raise ValueError("now must be a non-negative integer")
-    if candidate.capability_context.policy_id != EMERGENCY_COURT_POLICY_ID:
-        raise ValueError("incident Court candidate uses an unexpected policy")
+
+    expected_policy = EMERGENCY_COURT_POLICIES.get(candidate.intent.capability)
+    if expected_policy is None or candidate.capability_context.policy_id != expected_policy:
+        raise ValueError("incident Court candidate uses an unexpected capability policy")
+    if candidate.capability_context.proposed_capabilities != (candidate.intent.capability,):
+        raise ValueError("incident Court context must propose exactly the bound capability")
     if candidate.capability_context.court_authority != EMERGENCY_COURT_AUTHORITY:
         raise ValueError("incident Court candidate lost emergency authority binding")
     if candidate.capability_context.actuation_granted:
