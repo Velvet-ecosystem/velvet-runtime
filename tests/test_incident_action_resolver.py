@@ -114,7 +114,7 @@ class IncidentActionResolverTests(unittest.TestCase):
         self.assertIsNone(resolution.capability)
         self.assertIsNone(resolution.logical_target)
 
-    def test_policy_waiting_for_evidence_cannot_resolve(self):
+    def test_policy_waiting_for_evidence_stays_first_priority_but_cannot_resolve(self):
         cand = candidate("unlock.driver-door")
         ctx = context()
         policy = policy_for(
@@ -130,7 +130,8 @@ class IncidentActionResolverTests(unittest.TestCase):
 
         self.assertFalse(resolution.resolved)
         self.assertEqual(resolution.state, "incident-policy-not-ready")
-        self.assertEqual(resolution.priority_band, "ordinary")
+        self.assertEqual(resolution.priority_band, "life-safety")
+        self.assertEqual(resolution.priority_rank, 0)
         self.assertIsNone(resolution.capability)
 
     def test_cross_incident_context_cannot_resolve(self):
