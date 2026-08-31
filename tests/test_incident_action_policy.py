@@ -159,7 +159,7 @@ class IncidentActionPolicyTests(unittest.TestCase):
         self.assertIs(decision.action_family, IncidentActionFamily.UNKNOWN)
         self.assertEqual(decision.state, "action-not-policy-mapped")
 
-    def test_emergency_first_must_be_established(self):
+    def test_unverified_manual_start_does_not_receive_life_safety_priority(self):
         cand = candidate("hazards-on")
         ctx = context(
             activation=EmergencyActivation.MANUAL_EMERGENCY_PROTOCOL,
@@ -174,8 +174,8 @@ class IncidentActionPolicyTests(unittest.TestCase):
         )
         self.assertFalse(decision.may_advance)
         self.assertEqual(decision.state, "emergency-context-not-active-verified")
-        self.assertEqual(decision.priority_band, "life-safety")
-        self.assertEqual(decision.priority_rank, 0)
+        self.assertEqual(decision.priority_band, "ordinary")
+        self.assertEqual(decision.priority_rank, 100)
 
     def test_candidate_must_match_emergency_incident_context(self):
         cand = candidate("hazards-on", incident_id="incident-other")
@@ -192,6 +192,8 @@ class IncidentActionPolicyTests(unittest.TestCase):
 
         self.assertFalse(decision.may_advance)
         self.assertEqual(decision.state, "incident-context-mismatch")
+        self.assertEqual(decision.priority_band, "ordinary")
+        self.assertEqual(decision.priority_rank, 100)
         self.assertFalse(decision.creates_intent)
 
     def test_evidence_values_must_be_real_booleans(self):
