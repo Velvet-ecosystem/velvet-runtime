@@ -42,7 +42,24 @@ class AuthorityResolution:
 
 
 def resolve_authority(capability_context) -> AuthorityResolution:
-    active = _text(getattr(capability_context, "authority_profile", None))
+    """Resolve canonical Court authority, never deployment-label semantics.
+
+    New capability contexts expose ``court_authority`` / ``court_authorities``
+    explicitly. Older direct Court callers may still provide the historical
+    ``authority_profile`` fields when those values are already canonical Court
+    classes. No string heuristic translates labels such as ``owner_present``.
+    """
+
+    explicit = hasattr(capability_context, "court_authority")
+    if explicit:
+        active = _text(getattr(capability_context, "court_authority", None))
+        configured = getattr(capability_context, "court_authorities", None)
+        collection_label = "court_authorities"
+    else:
+        active = _text(getattr(capability_context, "authority_profile", None))
+        configured = getattr(capability_context, "authority_profiles", None)
+        collection_label = "authority_profiles"
+
     if active not in _AUTHORITY_RANKS:
         return AuthorityResolution(
             active,
@@ -51,10 +68,9 @@ def resolve_authority(capability_context) -> AuthorityResolution:
             0,
             False,
             "authority_unknown",
-            "active authority profile is not registered in the Court hierarchy",
+            "active Court authority is not registered in the Court hierarchy",
         )
 
-    configured = getattr(capability_context, "authority_profiles", None)
     if configured is None:
         candidates = (active,)
     else:
@@ -66,7 +82,7 @@ def resolve_authority(capability_context) -> AuthorityResolution:
                 0,
                 False,
                 "authority_conflict",
-                "authority_profiles must be an ordered collection, not a string",
+                "{} must be an ordered collection, not a string".format(collection_label),
             )
         candidates = _normalize_candidates(configured)
         if not candidates:
@@ -77,7 +93,7 @@ def resolve_authority(capability_context) -> AuthorityResolution:
                 0,
                 False,
                 "authority_conflict",
-                "authority candidate set is empty",
+                "Court authority candidate set is empty",
             )
         unknown = tuple(item for item in candidates if item not in _AUTHORITY_RANKS)
         if unknown:
@@ -88,7 +104,7 @@ def resolve_authority(capability_context) -> AuthorityResolution:
                 0,
                 False,
                 "authority_unknown",
-                "authority candidate '{}' is not registered".format(unknown[0]),
+                "Court authority candidate '{}' is not registered".format(unknown[0]),
             )
         if len(set(candidates)) != len(candidates):
             return AuthorityResolution(
@@ -98,7 +114,7 @@ def resolve_authority(capability_context) -> AuthorityResolution:
                 0,
                 False,
                 "authority_conflict",
-                "authority candidate identities must be unique",
+                "Court authority candidate identities must be unique",
             )
 
     selected = max(candidates, key=lambda item: _AUTHORITY_RANKS[item])

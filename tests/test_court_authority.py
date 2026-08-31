@@ -23,6 +23,25 @@ class TestCourtAuthority(unittest.TestCase):
         self.assertEqual(result.selected_rank, 600)
         self.assertEqual(result.candidates, ("owner",))
 
+    def test_explicit_court_authority_is_used_instead_of_deployment_label(self):
+        result = resolve_authority(SimpleNamespace(
+            authority_profile="owner_present",
+            authority_profiles=("owner_present",),
+            court_authority="owner",
+            court_authorities=("owner",),
+        ))
+        self.assertTrue(result.valid)
+        self.assertEqual(result.selected_profile, "owner")
+        self.assertEqual(result.selected_rank, 600)
+
+    def test_explicit_empty_court_authority_does_not_fall_back_to_deployment_label(self):
+        result = resolve_authority(SimpleNamespace(
+            authority_profile="owner",
+            court_authority="",
+        ))
+        self.assertFalse(result.valid)
+        self.assertEqual(result.state, "authority_unknown")
+
     def test_highest_candidate_must_match_active_authority(self):
         result = resolve_authority(SimpleNamespace(
             authority_profile="owner",
@@ -41,6 +60,16 @@ class TestCourtAuthority(unittest.TestCase):
         self.assertTrue(result.valid)
         self.assertEqual(result.selected_profile, "medical")
         self.assertEqual(result.selected_rank, 700)
+
+    def test_explicit_emergency_candidate_conflict_is_not_hidden_by_owner_deployment_label(self):
+        result = resolve_authority(SimpleNamespace(
+            authority_profile="owner_present",
+            court_authority="owner",
+            court_authorities=("owner", "emergency"),
+        ))
+        self.assertFalse(result.valid)
+        self.assertEqual(result.state, "authority_conflict")
+        self.assertEqual(result.selected_profile, "emergency")
 
     def test_unknown_duplicate_and_empty_candidates_fail_closed(self):
         contexts = (
