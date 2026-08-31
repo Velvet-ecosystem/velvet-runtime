@@ -3,6 +3,7 @@
 import os
 import sys
 import unittest
+from dataclasses import replace
 from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -21,7 +22,7 @@ from services.incident_action_policy import (
 from services.incident_action_resolver import resolve_incident_action
 from services.incident_court_binding import (
     EMERGENCY_COURT_AUTHORITY,
-    EMERGENCY_COURT_POLICY_ID,
+    EMERGENCY_COURT_POLICIES,
     EMERGENCY_DEPLOYMENT_AUTHORITY,
     authorize_incident_court_candidate,
     bind_incident_court_candidate,
@@ -86,7 +87,7 @@ class IncidentCourtBindingTests(unittest.TestCase):
         )
 
         court_context = bound.capability_context
-        self.assertEqual(court_context.policy_id, EMERGENCY_COURT_POLICY_ID)
+        self.assertEqual(court_context.policy_id, EMERGENCY_COURT_POLICIES["visibility.request"])
         self.assertEqual(court_context.authority_profile, EMERGENCY_DEPLOYMENT_AUTHORITY)
         self.assertEqual(court_context.court_authority, EMERGENCY_COURT_AUTHORITY)
         self.assertEqual(court_context.court_authorities, ("emergency",))
@@ -148,7 +149,7 @@ class IncidentCourtBindingTests(unittest.TestCase):
         self.assertEqual(incident["priority_band"], "life-safety")
         self.assertEqual(incident["priority_rank"], 0)
 
-    def test_verified_rescue_access_can_reach_same_emergency_court_boundary(self):
+    def test_verified_rescue_access_uses_separate_access_policy(self):
         evidence = IncidentActionEvidence(
             vehicle_stationary_verified=True,
             rescue_access_needed=True,
@@ -162,6 +163,7 @@ class IncidentCourtBindingTests(unittest.TestCase):
             body=active_body(),
             requested_at=200,
         )
+        self.assertEqual(bound.capability_context.policy_id, EMERGENCY_COURT_POLICIES["access.request"])
         receipts = []
         decision = authorize_incident_court_candidate(
             candidate=bound,
@@ -175,6 +177,32 @@ class IncidentCourtBindingTests(unittest.TestCase):
         self.assertEqual(bound.intent.target, "vehicle.access.door.driver")
         self.assertEqual(decision.authority_profile, "emergency")
         self.assertFalse(receipts[0]["payload"]["execution_performed"])
+
+    def test_visibility_policy_rejects_forged_access_target(self):
+        cand, ctx, resolution = resolved_action("hazards-on")
+        bound = bind_incident_court_candidate(
+            responder_candidate=cand,
+            resolution=resolution,
+            emergency_context=ctx,
+            body=active_body(),
+            requested_at=100,
+        )
+        forged = replace(
+            bound,
+            intent=replace(bound.intent, target="vehicle.access.door.driver"),
+        )
+        receipts = []
+        decision = authorize_incident_court_candidate(
+            candidate=forged,
+            policy_path=COURT_POLICY,
+            signing_key=b"x" * 32,
+            receipt_sink=receipts.append,
+            now=100,
+        )
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.state, "target_denied")
+        self.assertIsNone(decision.token)
+        self.assertEqual(receipts[0]["event_type"], "COURT_DENIED")
 
     def test_generic_unlock_cannot_bind_because_target_is_unresolved(self):
         evidence = IncidentActionEvidence(
