@@ -128,18 +128,36 @@ def resolve_incident_action(
     if not emergency_context.active or not emergency_context.activation_verified:
         return _unresolved(candidate, policy.action_family, "emergency-context-not-active-verified", "resolver requires the same active verified emergency context", False)
 
+    boundary_clean = (
+        policy.authority == "none"
+        and policy.requires_runtime_court is True
+        and policy.requires_safety_gate is True
+        and not policy.creates_intent
+        and not policy.selects_capability
+        and not policy.selects_target
+        and not policy.selects_executor
+    )
+    if not boundary_clean:
+        return _unresolved(candidate, policy.action_family, "invalid-policy-boundary", "incident policy carries authority or execution state the resolver cannot accept", False)
+
+    if not policy.may_advance:
+        waiting_on_specific_evidence = (
+            policy.state == "specific-evidence-required"
+            and policy.priority_band == "life-safety"
+            and policy.priority_rank == 0
+        )
+        return _unresolved(
+            candidate,
+            policy.action_family,
+            "incident-policy-not-ready",
+            "incident action is still waiting on policy-required evidence",
+            waiting_on_specific_evidence,
+        )
+
     if (
-        not policy.may_advance
-        or policy.state != "eligible-for-governed-resolution"
+        policy.state != "eligible-for-governed-resolution"
         or policy.priority_band != "life-safety"
         or policy.priority_rank != 0
-        or policy.authority != "none"
-        or policy.requires_runtime_court is not True
-        or policy.requires_safety_gate is not True
-        or policy.creates_intent
-        or policy.selects_capability
-        or policy.selects_target
-        or policy.selects_executor
     ):
         return _unresolved(candidate, policy.action_family, "incident-policy-not-ready", "incident action has not reached a clean eligible policy state", False)
 
