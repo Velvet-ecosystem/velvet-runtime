@@ -135,6 +135,7 @@ def evaluate_incident_action_policy(
             "invalid-proposal-boundary",
             family,
             "proposal no longer preserves the responder authority boundary",
+            emergency_established=False,
         )
 
     if candidate.incident_id != emergency_context.incident_id:
@@ -142,6 +143,7 @@ def evaluate_incident_action_policy(
             "incident-context-mismatch",
             family,
             "responder proposal does not match the emergency incident context",
+            emergency_established=False,
         )
 
     if not emergency_context.active or not emergency_context.activation_verified:
@@ -149,6 +151,7 @@ def evaluate_incident_action_policy(
             "emergency-context-not-active-verified",
             family,
             "incident action policy requires an active verified emergency context",
+            emergency_established=False,
         )
 
     if not emergency.eligible or emergency.priority_band != "life-safety":
