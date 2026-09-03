@@ -2,12 +2,12 @@
 """Verified live resource-heartbeat transport for the current Velvet body.
 
 Resource heartbeats intentionally travel beside ordinary node heartbeats rather
-than being folded into functional capability advertisements.  They describe
+than being folded into functional capability advertisements. They describe
 what a verified organ can host *right now* and never grant placement, execution,
 or actuation authority.
 
 The initial adapter is AF_UNIX because the current production distributed-work
-transport is AF_UNIX.  The publisher protocol is transport-neutral so a later
+transport is AF_UNIX. The publisher protocol is transport-neutral so a later
 authenticated LAN adapter for physical Lyra nodes can carry the same contract.
 """
 
@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Optional, Protocol, Tuple, Union, runtime_checkable
+from typing import Any, Mapping, Protocol, Tuple, Union, runtime_checkable
 
 from services.body_capacity import (
     BodyCapacitySnapshot,
@@ -38,6 +38,7 @@ from services.distributed_work_unix_transport import (
 RESOURCE_HEARTBEAT_SCHEMA = "velvet.runtime.body_resource_heartbeat.v1"
 DEFAULT_RESOURCE_MAX_AGE_SECONDS = 20.0
 DEFAULT_FUTURE_SKEW_SECONDS = 5.0
+MAX_RESOURCES_PER_NODE = 64
 
 
 @dataclass(frozen=True)
@@ -93,8 +94,13 @@ class BodyResourceService:
         _validate_now(now)
         if not isinstance(advertisement, NodeResourceAdvertisement):
             raise TypeError("advertisement must be NodeResourceAdvertisement")
-        if advertisement.observed_at > float(now) + self.max_future_skew_seconds:
+        if len(advertisement.resources) > MAX_RESOURCES_PER_NODE:
+            raise ValueError("resource advertisement exceeds per-node resource bound")
+        age = float(now) - float(advertisement.observed_at)
+        if age < -self.max_future_skew_seconds:
             raise ValueError("resource advertisement timestamp is too far in the future")
+        if age >= self.max_age_seconds:
+            raise ValueError("resource advertisement is already stale")
         self.prune(now=now)
         decision = self.registry.register(advertisement)
         return ResourceHeartbeatResult(
@@ -256,6 +262,8 @@ def _resource_from_dict(raw: Mapping[str, Any]) -> ResourceAdvertisement:
 def _node_resource_advertisement_to_dict(
     advertisement: NodeResourceAdvertisement,
 ) -> Mapping[str, Any]:
+    if len(advertisement.resources) > MAX_RESOURCES_PER_NODE:
+        raise UnixTransportError("resource advertisement exceeds per-node resource bound")
     return {
         "schema": RESOURCE_HEARTBEAT_SCHEMA,
         "node_id": advertisement.node_id,
@@ -276,6 +284,8 @@ def _node_resource_advertisement_from_dict(
     resources_raw = raw.get("resources")
     if not isinstance(resources_raw, list):
         raise UnixTransportError("resource heartbeat resources must be a list")
+    if len(resources_raw) > MAX_RESOURCES_PER_NODE:
+        raise UnixTransportError("resource heartbeat exceeds per-node resource bound")
     body_verified = raw.get("body_verified")
     continuity_verified = raw.get("continuity_verified")
     if not isinstance(body_verified, bool) or not isinstance(continuity_verified, bool):
