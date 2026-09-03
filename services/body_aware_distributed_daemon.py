@@ -8,19 +8,18 @@ reviewed accelerators without hard-coding UP Squared, Lyra, laptop, or server
 profiles.
 
 AF_UNIX is intentionally the first transport because the current production
-specialist transport is AF_UNIX.  Physical cross-host Lyra deployment will use
+specialist transport is AF_UNIX. Physical cross-host Lyra deployment will use
 an authenticated LAN adapter implementing the same BodyResourceClient contract.
 """
 
 from __future__ import annotations
 
-import argparse
 import json
 import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping, Optional, Sequence, Tuple
+from typing import Any, Mapping, Optional, Tuple
 
 from services.body_capacity import (
     LinuxResourceProbe,
@@ -28,6 +27,7 @@ from services.body_capacity import (
     NodeResourceRegistry,
     ResourceAdvertisement,
     ResourceKind,
+    ResourceRegistrationDecision,
     ResourceScope,
     StoragePathSpec,
 )
@@ -39,6 +39,10 @@ from services.body_resource_transport import (
     ResourceHeartbeatResult,
     UnixBodyResourceClient,
 )
+from services.distributed_work_coordinator import (
+    NodeAvailability,
+    VerifiedNodeRegistry,
+)
 from services.distributed_work_daemon import (
     DistributedRuntimeDaemon,
     JsonlJournal,
@@ -48,6 +52,7 @@ from services.distributed_work_daemon import (
 )
 
 _CONFIG_LIMIT_BYTES = 256 * 1024
+_MAX_CONFIGURED_RESOURCES = 62  # Linux probe may add RAM + logical CPU.
 _TRANSPORT_FLAGS = {
     "transport_only": True,
     "canonical": False,
@@ -116,6 +121,69 @@ class _InProcessBodyResourceClient:
         return self.service.capacity_snapshot(now=now)
 
 
+class _BodyBoundResourceService(BodyResourceService):
+    """Require specialist resource identity to match a live functional node."""
+
+    def __init__(
+        self,
+        registry: NodeResourceRegistry,
+        functional_registry: VerifiedNodeRegistry,
+        *,
+        local_node_id: str,
+        max_age_seconds: float,
+    ) -> None:
+        if not isinstance(functional_registry, VerifiedNodeRegistry):
+            raise TypeError("functional_registry must be VerifiedNodeRegistry")
+        if not isinstance(local_node_id, str) or not local_node_id.strip():
+            raise ValueError("local_node_id is required")
+        super().__init__(registry, max_age_seconds=max_age_seconds)
+        self.functional_registry = functional_registry
+        self.local_node_id = local_node_id.strip()
+
+    def register(
+        self,
+        advertisement: NodeResourceAdvertisement,
+        *,
+        now: float,
+    ) -> ResourceHeartbeatResult:
+        if advertisement.node_id != self.local_node_id:
+            reason = self._specialist_rejection_reason(advertisement, now=now)
+            if reason is not None:
+                self.prune(now=now)
+                return ResourceHeartbeatResult(
+                    decision=ResourceRegistrationDecision(
+                        accepted=False,
+                        state="rejected",
+                        node_id=advertisement.node_id,
+                        reasons=(reason,),
+                    ),
+                    capacity=self.registry.capacity_snapshot(),
+                    observed_at=float(advertisement.observed_at),
+                )
+        return super().register(advertisement, now=now)
+
+    def _specialist_rejection_reason(
+        self,
+        advertisement: NodeResourceAdvertisement,
+        *,
+        now: float,
+    ) -> Optional[str]:
+        node = self.functional_registry.get(advertisement.node_id)
+        if node is None:
+            return "functional-node-not-registered"
+        if node.body_id != advertisement.body_id:
+            return "functional-body-binding-mismatch"
+        if not node.body_verified:
+            return "functional-body-not-verified"
+        if not node.continuity_verified:
+            return "functional-continuity-not-verified"
+        if node.availability in {NodeAvailability.OFFLINE, NodeAvailability.QUARANTINED}:
+            return "functional-node-unavailable"
+        if float(now) - float(node.last_heartbeat) >= self.max_age_seconds:
+            return "functional-heartbeat-stale"
+        return None
+
+
 class BodyAwareDistributedRuntimeDaemon:
     """Run the existing Runtime daemon plus the verified resource service."""
 
@@ -134,8 +202,15 @@ class BodyAwareDistributedRuntimeDaemon:
         self.resource_config = resource_config
         self.resource_journal = JsonlJournal(resource_config.journal_path)
         self.resource_registry = NodeResourceRegistry(body_id=runtime_config.body_id)
-        self.resource_service = BodyResourceService(
+        coordinator = getattr(self.runtime.service, "_coordinator", None)
+        functional_registry = getattr(coordinator, "registry", None)
+        if not isinstance(functional_registry, VerifiedNodeRegistry):
+            raise RuntimeError("Runtime functional node registry is unavailable")
+        self.functional_registry = functional_registry
+        self.resource_service = _BodyBoundResourceService(
             self.resource_registry,
+            functional_registry,
+            local_node_id=resource_config.node_id,
             max_age_seconds=resource_config.max_age_seconds,
         )
         self.resource_server = BodyResourceUnixServer(
@@ -157,15 +232,17 @@ class BodyAwareDistributedRuntimeDaemon:
             return
 
         self.resource_server.bind()
+        runtime_errors = []
+        resource_errors = []
         resource_thread = threading.Thread(
             target=self._serve_resources,
-            args=(stop_event,),
+            args=(stop_event, resource_errors),
             name="velvet-body-resource-socket",
             daemon=True,
         )
         runtime_thread = threading.Thread(
-            target=self.runtime.run,
-            args=(stop_event,),
+            target=self._run_runtime,
+            args=(stop_event, runtime_errors),
             name="velvet-distributed-runtime",
             daemon=True,
         )
@@ -174,21 +251,42 @@ class BodyAwareDistributedRuntimeDaemon:
         try:
             self._publish_local_once()
             while not stop_event.wait(self.resource_config.heartbeat_seconds):
+                if not runtime_thread.is_alive():
+                    stop_event.set()
+                    break
+                if not resource_thread.is_alive():
+                    stop_event.set()
+                    break
                 self._publish_local_once()
         finally:
+            self._withdraw_local_resources()
             stop_event.set()
             runtime_thread.join(timeout=5.0)
             resource_thread.join(timeout=3.0)
             self.resource_server.close()
+        if runtime_errors:
+            raise RuntimeError("distributed Runtime thread failed") from runtime_errors[0]
+        if resource_errors:
+            raise RuntimeError("body resource server thread failed") from resource_errors[0]
 
     def capacity_snapshot(self, *, now: Optional[float] = None):
         timestamp = time.time() if now is None else float(now)
         return self.resource_service.capacity_snapshot(now=timestamp)
 
-    def _serve_resources(self, stop_event: threading.Event) -> None:
+    def _run_runtime(self, stop_event: threading.Event, errors: list) -> None:
+        try:
+            self.runtime.run(stop_event)
+        except Exception as exc:
+            errors.append(exc)
+            stop_event.set()
+
+    def _serve_resources(self, stop_event: threading.Event, errors: list) -> None:
         try:
             while not stop_event.is_set():
                 self.resource_server.serve_once()
+        except Exception as exc:
+            errors.append(exc)
+            stop_event.set()
         finally:
             self.resource_server.close()
 
@@ -207,6 +305,22 @@ class BodyAwareDistributedRuntimeDaemon:
         self._journal_result("resource-heartbeat", result)
         return result
 
+    def _withdraw_local_resources(self) -> None:
+        now = time.time()
+        empty = NodeResourceAdvertisement(
+            node_id=self.resource_config.node_id,
+            body_id=self.resource_config.body_id,
+            observed_at=now,
+            resources=(),
+            body_verified=self.resource_config.body_verified,
+            continuity_verified=self.resource_config.continuity_verified,
+            authority="none",
+        )
+        try:
+            self.resource_service.register(empty, now=now)
+        except Exception:
+            return
+
     def _journal_result(self, state: str, result: ResourceHeartbeatResult) -> None:
         self._journal(
             state,
@@ -220,14 +334,15 @@ class BodyAwareDistributedRuntimeDaemon:
         )
 
     def _journal(self, state: str, **values: Any) -> None:
-        record = {
-            "schema": "velvet.runtime.body_resource_journal.v1",
-            "recorded_at": time.time(),
-            "state": state,
-            **values,
-            **_TRANSPORT_FLAGS,
-        }
-        self.resource_journal.append(record)
+        self.resource_journal.append(
+            {
+                "schema": "velvet.runtime.body_resource_journal.v1",
+                "recorded_at": time.time(),
+                "state": state,
+                **values,
+                **_TRANSPORT_FLAGS,
+            }
+        )
 
 
 class BodyAwareSpecialistNodeDaemon:
@@ -248,6 +363,8 @@ class BodyAwareSpecialistNodeDaemon:
             raise ValueError("resource node_id must match specialist profile")
         if resource_config.body_id != specialist_config.profile.body_id:
             raise ValueError("resource body_id must match specialist profile")
+        if resource_config.heartbeat_seconds != specialist_config.heartbeat_seconds:
+            raise ValueError("specialist resource heartbeat must share normal heartbeat cadence")
         self.specialist = SpecialistNodeDaemon(specialist_config)
         self.resource_config = resource_config
         self.resource_journal = JsonlJournal(resource_config.journal_path)
@@ -302,7 +419,8 @@ class BodyAwareSpecialistNodeDaemon:
         now = time.time()
         functional = self.specialist._heartbeat_once()
         try:
-            resource = self.resource_publisher.publish(now=now)
+            advertisement = self.resource_publisher.probe.probe(now=now)
+            resource = self.resource_client.register_resources(advertisement, now=now)
         except Exception as exc:
             self._journal(
                 "resource-heartbeat-failed",
@@ -317,7 +435,7 @@ class BodyAwareSpecialistNodeDaemon:
             resource_accepted=resource.decision.accepted,
             resource_state=resource.decision.state,
             observed_at=resource.observed_at,
-            resource_count=len(self.resource_publisher.probe.probe(now=now).resources),
+            resource_count=len(advertisement.resources),
         )
 
     def _withdraw_resources(self) -> None:
@@ -381,7 +499,7 @@ def load_specialist_resource_config(path: Path) -> ResourceSupervisorConfig:
     base = SpecialistDaemonConfig.load(path)
     raw = _load_json(path)
     resources = _resource_mapping(raw)
-    return _resource_config(
+    config = _resource_config(
         resources,
         default_socket=base.runtime_socket.with_name("body-resources.sock"),
         default_node_id=base.profile.node_id,
@@ -393,6 +511,11 @@ def load_specialist_resource_config(path: Path) -> ResourceSupervisorConfig:
         continuity_verified=base.profile.continuity_verified,
         specialist_node_id=base.profile.node_id,
     )
+    if config.heartbeat_seconds != base.heartbeat_seconds:
+        raise BodyResourceConfigError(
+            "specialist resources.heartbeat_seconds must equal heartbeat_seconds"
+        )
+    return config
 
 
 def _resource_config(
@@ -416,8 +539,23 @@ def _resource_config(
     node_id = _text(raw.get("node_id", default_node_id), "resources.node_id")
     if specialist_node_id is not None and node_id != specialist_node_id:
         raise BodyResourceConfigError("specialist resource node_id cannot differ from node profile")
-    heartbeat = _positive_number(raw.get("heartbeat_seconds", default_heartbeat), "resources.heartbeat_seconds")
-    max_age = _positive_number(raw.get("max_age_seconds", default_max_age), "resources.max_age_seconds")
+    heartbeat = _positive_number(
+        raw.get("heartbeat_seconds", default_heartbeat),
+        "resources.heartbeat_seconds",
+    )
+    max_age = _positive_number(
+        raw.get("max_age_seconds", default_max_age),
+        "resources.max_age_seconds",
+    )
+    storage_paths = _storage_specs(raw.get("storage_paths", ()))
+    extra_resources = _extra_resources(raw.get("extra_resources", ()))
+    if len(storage_paths) + len(extra_resources) > _MAX_CONFIGURED_RESOURCES:
+        raise BodyResourceConfigError("configured resources exceed bounded per-node limit")
+    resource_ids = [item.resource_id for item in storage_paths] + [
+        item.resource_id for item in extra_resources
+    ]
+    if len(resource_ids) != len(set(resource_ids)):
+        raise BodyResourceConfigError("configured resource_id values must be unique")
     return ResourceSupervisorConfig(
         enabled=enabled,
         socket_path=socket_path,
@@ -426,8 +564,8 @@ def _resource_config(
         heartbeat_seconds=heartbeat,
         max_age_seconds=max_age,
         journal_path=journal_path,
-        storage_paths=_storage_specs(raw.get("storage_paths", ())),
-        extra_resources=_extra_resources(raw.get("extra_resources", ())),
+        storage_paths=storage_paths,
+        extra_resources=extra_resources,
         body_verified=body_verified,
         continuity_verified=continuity_verified,
     )
@@ -468,7 +606,10 @@ def _storage_specs(value: Any) -> Tuple[StoragePathSpec, ...]:
                 resource_id=resource_id,
                 path=path,
                 scope=scope,
-                capabilities=_text_tuple(item.get("capabilities", ()), "storage capabilities"),
+                capabilities=_text_tuple(
+                    item.get("capabilities", ()),
+                    "storage capabilities",
+                ),
             )
         )
     return tuple(result)
@@ -488,11 +629,12 @@ def _extra_resources(value: Any) -> Tuple[ResourceAdvertisement, ...]:
         seen.add(resource_id)
         try:
             kind = ResourceKind(_text(item.get("kind"), "extra resource kind"))
-            scope = ResourceScope(_text(item.get("scope", "local"), "extra resource scope"))
+            scope = ResourceScope(
+                _text(item.get("scope", "local"), "extra resource scope")
+            )
         except ValueError as exc:
             raise BodyResourceConfigError("extra resource kind or scope is unsupported") from exc
-        authority = item.get("authority", "none")
-        if authority != "none":
+        if item.get("authority", "none") != "none":
             raise BodyResourceConfigError("extra resources cannot carry authority")
         online = item.get("online", True)
         if not isinstance(online, bool):
@@ -502,10 +644,19 @@ def _extra_resources(value: Any) -> Tuple[ResourceAdvertisement, ...]:
                 resource_id=resource_id,
                 kind=kind,
                 scope=scope,
-                capacity=_positive_number(item.get("capacity"), "extra resource capacity"),
-                available=_nonnegative_number(item.get("available"), "extra resource available"),
+                capacity=_positive_number(
+                    item.get("capacity"),
+                    "extra resource capacity",
+                ),
+                available=_nonnegative_number(
+                    item.get("available"),
+                    "extra resource available",
+                ),
                 unit=_text(item.get("unit"), "extra resource unit"),
-                capabilities=_text_tuple(item.get("capabilities", ()), "extra resource capabilities"),
+                capabilities=_text_tuple(
+                    item.get("capabilities", ()),
+                    "extra resource capabilities",
+                ),
                 online=online,
                 authority="none",
             )
@@ -574,36 +725,3 @@ def _nonnegative_number(value: Any, name: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)) or float(value) < 0.0:
         raise BodyResourceConfigError("%s must be non-negative" % name)
     return float(value)
-
-
-def main(argv: Optional[Sequence[str]] = None) -> int:
-    parser = argparse.ArgumentParser(description="Velvet body-aware distributed daemon")
-    subparsers = parser.add_subparsers(dest="role", required=True)
-    for role in ("runtime", "specialist"):
-        child = subparsers.add_parser(role)
-        child.add_argument("--config", required=True)
-    arguments = parser.parse_args(argv)
-    config_path = Path(arguments.config).expanduser().resolve()
-    stop_event = threading.Event()
-
-    if arguments.role == "runtime":
-        runtime_config = RuntimeDaemonConfig.load(config_path)
-        resource_config = load_runtime_resource_config(config_path)
-        daemon = BodyAwareDistributedRuntimeDaemon(runtime_config, resource_config)
-    else:
-        specialist_config = SpecialistDaemonConfig.load(config_path)
-        resource_config = load_specialist_resource_config(config_path)
-        daemon = BodyAwareSpecialistNodeDaemon(specialist_config, resource_config)
-
-    # The proven daemon module installs SIGTERM/SIGINT handlers in its own CLI.
-    # This wrapper stays import-friendly; service managers may signal the process
-    # and Python's default KeyboardInterrupt path remains available for bench use.
-    try:
-        daemon.run(stop_event)
-    except KeyboardInterrupt:
-        stop_event.set()
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
