@@ -29,6 +29,13 @@
     "continuity_verified": true,
     "authority": "none"
   },
+  "resources": {
+    "enabled": true,
+    "socket_path": "/run/velvet/body-resources.sock",
+    "journal_path": "/var/lib/velvet-specialist-ruby/body-resources.jsonl",
+    "storage_paths": [],
+    "extra_resources": []
+  },
   "transport_only": true,
   "canonical": false,
   "grants_authority": false,
