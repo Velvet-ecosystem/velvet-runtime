@@ -11,6 +11,25 @@
   "reassignment_lease_seconds": 60.0,
   "allowed_uids": [],
   "allowed_gids": [],
+  "resources": {
+    "enabled": true,
+    "node_id": "founder",
+    "socket_path": "/run/velvet/body-resources.sock",
+    "journal_path": "/var/lib/velvet-runtime/body-resources.jsonl",
+    "heartbeat_seconds": 5.0,
+    "max_age_seconds": 20.0,
+    "storage_paths": [
+      {
+        "resource_id": "storage.library-1tb",
+        "path": "/mnt/velvet-library",
+        "scope": "attached",
+        "capabilities": [
+          "library.archive"
+        ]
+      }
+    ],
+    "extra_resources": []
+  },
   "transport_only": true,
   "canonical": false,
   "grants_authority": false,
