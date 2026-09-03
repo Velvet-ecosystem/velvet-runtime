@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-only
-"""Compose Velvet's local written conversation path over Runtime body state.
+"""Compose Velvet's local written conversation path over Runtime evidence seams.
 
-Runtime owns the local body-state file and composition boundary.  Core owns
-fact selection and truth semantics.  Language owns human wording.  This module
-only connects those already-bounded pieces and grants no execution authority.
+Runtime owns the local body-state file and the configured read-only Velour
+retrieval client. Core owns fact/evidence selection and truth semantics.
+Language owns human wording. This module only composes those bounded pieces and
+grants no execution authority.
 """
 
 from __future__ import annotations
@@ -13,6 +14,8 @@ import os
 import stat
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional, Tuple
+
+from services.library_conversation_provider import configured_library_evidence_provider
 
 DEFAULT_BODY_SNAPSHOT_PATH = Path("/run/velvet/body-state.json")
 MAX_BODY_SNAPSHOT_BYTES = 2 * 1024 * 1024
@@ -81,12 +84,17 @@ def build_local_conversation_gateway(
     conversation_gateway_cls: Optional[Callable[..., Any]] = None,
     body_resolver_cls: Optional[Callable[..., Any]] = None,
     handle_turn: Optional[Callable[..., Mapping[str, Any]]] = None,
+    library_evidence_provider: Optional[Callable[[str, int], Mapping[str, Any]]] = None,
+    library_resolver_cls: Optional[Callable[..., Any]] = None,
+    resolver_chain_cls: Optional[Callable[..., Any]] = None,
 ) -> Any:
-    """Build one local text/speech conversation gateway grounded in body state.
+    """Build one local text/speech gateway grounded in body and Library evidence.
 
-    The default path lazily imports the separately packaged Core and Language
-    organs.  Dependency injection exists so Runtime's own tests do not need to
-    install either repository merely to verify the composition boundary.
+    Body grounding always remains available when its dependencies are present.
+    Library grounding is optional: when ``VELVET_LIBRARY_URL`` is configured,
+    Runtime composes the body resolver first and Velour's read-only evidence
+    resolver second. The same retrieval seam works on localhost or across the
+    private LAN.
     """
 
     if not isinstance(conversation_id, str) or not conversation_id.strip():
@@ -101,8 +109,24 @@ def build_local_conversation_gateway(
         if handle_turn is None:
             handle_turn = defaults[2]
 
-    provider = RuntimeBodySnapshotProvider(snapshot_path or configured_body_snapshot_path())
-    core_resolver = body_resolver_cls(provider)
+    body_provider = RuntimeBodySnapshotProvider(
+        snapshot_path or configured_body_snapshot_path()
+    )
+    body_resolver = body_resolver_cls(body_provider)
+    core_resolver = body_resolver
+
+    if library_evidence_provider is None:
+        library_evidence_provider = configured_library_evidence_provider()
+
+    if library_evidence_provider is not None:
+        if library_resolver_cls is None or resolver_chain_cls is None:
+            library_defaults = _load_library_conversation_components()
+            if library_resolver_cls is None:
+                library_resolver_cls = library_defaults[0]
+            if resolver_chain_cls is None:
+                resolver_chain_cls = library_defaults[1]
+        library_resolver = library_resolver_cls(library_evidence_provider)
+        core_resolver = resolver_chain_cls((body_resolver, library_resolver))
 
     def meaning_resolver(event: Mapping[str, object]) -> Mapping[str, object]:
         result = handle_turn(event, resolver=core_resolver)
@@ -135,3 +159,18 @@ def _load_conversation_components() -> Tuple[Callable[..., Any], Callable[..., A
         ) from exc
 
     return ConversationGateway, BodySnapshotConversationResolver, handle_conversation_turn
+
+
+def _load_library_conversation_components() -> Tuple[Callable[..., Any], Callable[..., Any]]:
+    try:
+        from velvet.core.native_brain.conversation_resolver_chain import (
+            ConversationResolverChain,
+        )
+        from velvet.core.native_brain.library_evidence_conversation import (
+            LibraryEvidenceConversationResolver,
+        )
+    except ImportError as exc:
+        raise LocalConversationError(
+            "velvet-ai-core with Library evidence conversation support is required"
+        ) from exc
+    return LibraryEvidenceConversationResolver, ConversationResolverChain
