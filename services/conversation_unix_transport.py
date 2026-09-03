@@ -2,8 +2,8 @@
 """Authority-free Unix transport for Velvet's local conversation surface.
 
 This module reuses Runtime's existing authenticated, length-prefixed Unix RPC
-transport.  It exposes one narrow operation: submit a human conversation turn
-and receive the already-grounded Language reply.  It never exposes Runtime's
+transport. It exposes one narrow operation: submit a human conversation turn
+and receive the already-grounded Language reply. It never exposes Runtime's
 raw event bus, Court, executors, or hardware handles.
 """
 
@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Mapping, Optional, Union
+from typing import Any, Callable, Mapping, Optional, Union
 
 from services.distributed_work_unix_transport import (
     PeerCredentials,
@@ -37,11 +37,16 @@ class ConversationUnixServer(UnixRpcServer):
         self,
         socket_path: Union[str, Path],
         gateway: Any,
+        *,
+        modality_factory: Optional[Callable[[str], Any]] = None,
         **kwargs: Any,
     ) -> None:
         if gateway is None or not callable(getattr(gateway, "submit", None)):
             raise TypeError("gateway must provide submit(text, modality=...)")
+        if modality_factory is not None and not callable(modality_factory):
+            raise TypeError("modality_factory must be callable")
         self.gateway = gateway
+        self._modality_factory = modality_factory or _language_modality
         super().__init__(socket_path, self._dispatch_conversation, **kwargs)
 
     def _dispatch_conversation(
@@ -62,14 +67,7 @@ class ConversationUnixServer(UnixRpcServer):
         if not isinstance(modality_name, str) or modality_name not in _ALLOWED_MODALITIES:
             raise ValueError("unsupported conversation modality")
 
-        try:
-            from velvet_language import ConversationModality
-        except ImportError as exc:
-            raise ConversationTransportError(
-                "velvet-language is required by the local conversation service"
-            ) from exc
-
-        modality = ConversationModality(modality_name)
+        modality = self._modality_factory(modality_name)
         exchange = self.gateway.submit(text, modality=modality)
         request = exchange.request
         reply = exchange.reply
@@ -142,6 +140,18 @@ def build_optional_conversation_server(
         resolved_gateway,
         accept_timeout_seconds=0.02,
     )
+
+
+def _language_modality(modality_name: str) -> Any:
+    """Resolve Language's modality only at the production gateway boundary."""
+
+    try:
+        from velvet_language import ConversationModality
+    except ImportError as exc:
+        raise ConversationTransportError(
+            "velvet-language is required by the local conversation service"
+        ) from exc
+    return ConversationModality(modality_name)
 
 
 def _validate_client_result(result: Mapping[str, Any]) -> Mapping[str, Any]:
