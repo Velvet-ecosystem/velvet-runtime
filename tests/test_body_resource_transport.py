@@ -2,7 +2,6 @@
 
 import threading
 import time
-from pathlib import Path
 
 from services.body_capacity import (
     NodeResourceAdvertisement,
@@ -20,9 +19,9 @@ from services.body_resource_transport import (
 BODY_ID = "velvet-body"
 
 
-def resource(available=700_000_000_000):
+def resource(available=700_000_000_000, resource_id="storage.library"):
     return ResourceAdvertisement(
-        resource_id="storage.library",
+        resource_id=resource_id,
         kind=ResourceKind.STORAGE,
         scope=ResourceScope.ATTACHED,
         capacity=1_000_000_000_000,
@@ -67,6 +66,36 @@ def test_service_rejects_future_skew_before_registry_mutation():
         raise AssertionError("future-skewed resource heartbeat was accepted")
 
     assert registry.snapshot() == ()
+
+
+def test_service_rejects_heartbeat_that_arrives_already_stale():
+    registry = NodeResourceRegistry(body_id=BODY_ID)
+    service = BodyResourceService(registry, max_age_seconds=20.0)
+
+    try:
+        service.register(advertisement("late", 1.0, resource()), now=25.0)
+    except ValueError as exc:
+        assert "stale" in str(exc)
+    else:
+        raise AssertionError("already-stale resource heartbeat was accepted")
+
+    assert registry.snapshot() == ()
+
+
+def test_service_bounds_resources_per_node():
+    registry = NodeResourceRegistry(body_id=BODY_ID)
+    service = BodyResourceService(registry)
+    resources = tuple(
+        resource(1_000_000, resource_id="disk-%02d" % index)
+        for index in range(65)
+    )
+
+    try:
+        service.register(advertisement("too-many", 10.0, *resources), now=10.0)
+    except ValueError as exc:
+        assert "bound" in str(exc)
+    else:
+        raise AssertionError("oversized resource advertisement was accepted")
 
 
 def test_unix_round_trip_preserves_host_scope_and_capacity(tmp_path):
