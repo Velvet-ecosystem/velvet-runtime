@@ -15,6 +15,7 @@ from services.continuity_activation import (
     resolve_continuity_paths,
     run_configured_continuity_gate,
 )
+from services.conversation_unix_transport import build_optional_conversation_server
 from services.observation_gateway import build_observation_gateway
 from services.optional_subsystems import activate_optional_subsystems
 from services.recovery_mode import enter_recovery_mode
@@ -92,6 +93,22 @@ def _body_health_follower(runtime):
     return follower
 
 
+def _optional_conversation_server(startup_timer):
+    """Bind the local conversation endpoint only when explicitly enabled."""
+
+    try:
+        server = build_optional_conversation_server()
+        if server is None:
+            return None
+        server.bind()
+        startup_timer.mark("conversation socket")
+        logger.info("[BOOT] Local grounded conversation socket enabled: %s", server.socket_path)
+        return server
+    except Exception as exc:
+        logger.warning("[BOOT] Optional local conversation socket inactive: %s", exc)
+        return None
+
+
 def main():
     startup_timer = StartupTimer()
     logger.info("[BOOT] === Velvet Runtime Starting ===")
@@ -151,6 +168,7 @@ def main():
 
     health_follower = _body_health_follower(runtime)
     startup_timer.mark("body health follower")
+    conversation_server = _optional_conversation_server(startup_timer)
 
     logger.info(
         "[BOOT] Execution pipeline provisioned with four read-only executors "
@@ -171,9 +189,18 @@ def main():
                 forwarded_health,
             )
         poll_runtime_maintenance()
+        if conversation_server is not None:
+            try:
+                conversation_server.serve_once()
+            except Exception as exc:
+                logger.warning("[CONVERSATION] Local socket disabled after transport failure: %s", exc)
+                conversation_server.close()
+                conversation_server = None
         _ = (execution_pipeline, local_gateway)
         time.sleep(1)
 
+    if conversation_server is not None:
+        conversation_server.close()
     logger.info("[BOOT] === Velvet Runtime Shutdown ===")
     sys.exit(0)
 
