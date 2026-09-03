@@ -17,6 +17,10 @@ from services.conversation_unix_transport import (
 )
 
 
+def fake_modality(value):
+    return SimpleNamespace(value=value)
+
+
 class FakeGateway:
     def __init__(self):
         self.calls = []
@@ -43,7 +47,11 @@ class ConversationUnixTransportTests(unittest.TestCase):
     def test_dispatch_exposes_only_bounded_conversation_result(self):
         with tempfile.TemporaryDirectory() as raw_root:
             gateway = FakeGateway()
-            server = ConversationUnixServer(Path(raw_root) / "conversation.sock", gateway)
+            server = ConversationUnixServer(
+                Path(raw_root) / "conversation.sock",
+                gateway,
+                modality_factory=fake_modality,
+            )
             result = server._dispatch_conversation(
                 CONVERSATION_OPERATION,
                 {"text": "What is the cabin temperature?", "modality": "text"},
@@ -54,11 +62,15 @@ class ConversationUnixTransportTests(unittest.TestCase):
         self.assertFalse(result["authority_granted"])
         self.assertFalse(result["grants_execution"])
         self.assertFalse(result["grants_actuation"])
-        self.assertEqual(gateway.calls[0][0], "What is the cabin temperature?")
+        self.assertEqual(gateway.calls[0], ("What is the cabin temperature?", "text"))
 
     def test_dispatch_rejects_unknown_operation_and_modality(self):
         with tempfile.TemporaryDirectory() as raw_root:
-            server = ConversationUnixServer(Path(raw_root) / "conversation.sock", FakeGateway())
+            server = ConversationUnixServer(
+                Path(raw_root) / "conversation.sock",
+                FakeGateway(),
+                modality_factory=fake_modality,
+            )
             peer = PeerCredentials(pid=1, uid=os.getuid(), gid=os.getgid())
             with self.assertRaisesRegex(ValueError, "unsupported conversation operation"):
                 server._dispatch_conversation("execute", {"text": "hello"}, peer)
