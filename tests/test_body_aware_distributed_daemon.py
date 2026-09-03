@@ -2,7 +2,6 @@
 
 import json
 import time
-from pathlib import Path
 
 from services.body_capacity import (
     BodyCapacitySnapshot,
@@ -10,12 +9,22 @@ from services.body_capacity import (
     ResourceRegistrationDecision,
 )
 from services.body_aware_distributed_daemon import (
+    BodyAwareDistributedRuntimeDaemon,
     BodyAwareSpecialistNodeDaemon,
+    BodyResourceConfigError,
     load_runtime_resource_config,
     load_specialist_resource_config,
 )
 from services.body_resource_transport import ResourceHeartbeatResult
-from services.distributed_work_daemon import SpecialistDaemonConfig
+from services.distributed_work_coordinator import (
+    NodeAdvertisement,
+    NodeAvailability,
+    NodeTier,
+)
+from services.distributed_work_daemon import (
+    RuntimeDaemonConfig,
+    SpecialistDaemonConfig,
+)
 
 
 class FakeResourceClient:
@@ -158,6 +167,19 @@ def test_specialist_resource_identity_is_bound_to_existing_profile(tmp_path):
     assert config.heartbeat_seconds == 5.0
 
 
+def test_specialist_resource_cadence_cannot_drift_from_normal_heartbeat(tmp_path):
+    mapping = specialist_mapping(tmp_path)
+    mapping["resources"]["heartbeat_seconds"] = 10.0
+    path = write_config(tmp_path, "specialist.json", mapping)
+
+    try:
+        load_specialist_resource_config(path)
+    except BodyResourceConfigError as exc:
+        assert "heartbeat_seconds" in str(exc)
+    else:
+        raise AssertionError("specialist resource cadence was allowed to drift")
+
+
 def test_specialist_heartbeat_pair_publishes_resources_without_replacing_normal_heartbeat(tmp_path):
     path = write_config(tmp_path, "specialist.json", specialist_mapping(tmp_path))
     specialist_config = SpecialistDaemonConfig.load(path)
@@ -197,3 +219,48 @@ def test_specialist_shutdown_withdrawal_replaces_resources_with_empty_view(tmp_p
     daemon._withdraw_resources()
 
     assert fake.advertisements[-1].resources == ()
+
+
+def test_specialist_resource_ad_is_rejected_until_normal_node_is_registered(tmp_path):
+    path = write_config(tmp_path, "runtime.json", runtime_mapping(tmp_path))
+    runtime_config = RuntimeDaemonConfig.load(path)
+    daemon = BodyAwareDistributedRuntimeDaemon(
+        runtime_config,
+        load_runtime_resource_config(path),
+    )
+    now = 100.0
+    resource_ad = NodeResourceAdvertisement(
+        node_id="velour-lyra-1",
+        body_id="velvet-body",
+        observed_at=now,
+        resources=(),
+        body_verified=True,
+        continuity_verified=True,
+    )
+
+    rejected = daemon.resource_service.register(resource_ad, now=now)
+
+    assert not rejected.decision.accepted
+    assert rejected.decision.reasons == ("functional-node-not-registered",)
+
+    node = NodeAdvertisement(
+        node_id="velour-lyra-1",
+        body_id="velvet-body",
+        organ="velour",
+        tier=NodeTier.SPECIALIST_LINUX,
+        capabilities=("summarise-records",),
+        current_load=0.1,
+        health=1.0,
+        availability=NodeAvailability.AVAILABLE,
+        last_heartbeat=now,
+        accepted_work_classes=("record-summary",),
+        body_verified=True,
+        continuity_verified=True,
+    )
+    decision, _lifecycle = daemon.runtime.service.register_node(node)
+    assert decision.accepted
+
+    accepted = daemon.resource_service.register(resource_ad, now=now)
+
+    assert accepted.decision.accepted
+    assert accepted.capacity.node_ids == ("velour-lyra-1",)
