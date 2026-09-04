@@ -13,8 +13,9 @@ capability is the preconfigured Founder wake dispatcher.
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
-from typing import Any, Mapping, Optional
+from typing import Any, Callable, Mapping, Optional
 
 from services.founder_wake_actuator import (
     FounderWakeActuationError,
@@ -31,6 +32,7 @@ from services.wake_request_policy import (
 
 
 MAX_WAKE_TRANSPORT_PAYLOAD_BYTES = 4096
+WAKE_REQUEST_PAYLOAD_TYPE = WAKE_REQUEST_SCHEMA
 
 
 @dataclass(frozen=True)
@@ -100,6 +102,82 @@ class WakePowerSupervisor:
         if actuation.dispatched and self.reason_store is not None:
             self.reason_store.record(decision)
         return WakeSupervisorOutcome(decision=decision, actuation=actuation)
+
+
+class AuthenticatedWakeEnvelopeReceiver:
+    """Structural receiver callback for ``AuthenticatedLocalIpServer``.
+
+    Communications performs HMAC peer authentication before invoking its receiver
+    callback. This shim then binds the signed envelope source to the wake payload
+    source, obtains the current Founder power state from a reviewed observer, and
+    invokes the narrow wake supervisor.
+
+    The class intentionally uses structural attribute access rather than importing
+    velvet-communications. Runtime therefore keeps its existing standalone test and
+    deployment boundary while the two repositories remain composable.
+    """
+
+    def __init__(
+        self,
+        *,
+        supervisor: WakePowerSupervisor,
+        local_peer_id: str,
+        power_state_provider: Callable[[], str],
+        now_ms_provider: Optional[Callable[[], int]] = None,
+    ) -> None:
+        if not isinstance(supervisor, WakePowerSupervisor):
+            raise TypeError("supervisor must be WakePowerSupervisor")
+        if not isinstance(local_peer_id, str) or not local_peer_id:
+            raise WakePolicyError("local_peer_id must be non-empty text")
+        if not callable(power_state_provider):
+            raise TypeError("power_state_provider must be callable")
+        if now_ms_provider is not None and not callable(now_ms_provider):
+            raise TypeError("now_ms_provider must be callable or None")
+        self.supervisor = supervisor
+        self.local_peer_id = local_peer_id
+        self.power_state_provider = power_state_provider
+        self.now_ms_provider = now_ms_provider or (lambda: int(time.time() * 1000))
+        self.last_outcome: Optional[WakeSupervisorOutcome] = None
+        self.last_error: Optional[str] = None
+
+    def __call__(self, envelope: object) -> bool:
+        try:
+            payload_type = getattr(envelope, "payload_type")
+            source_peer_id = getattr(envelope, "source_peer_id")
+            destination_peer_id = getattr(envelope, "destination_peer_id")
+            payload = getattr(envelope, "payload")
+        except Exception:
+            self.last_error = "wake envelope is missing required transport fields"
+            return False
+
+        if payload_type != WAKE_REQUEST_PAYLOAD_TYPE:
+            self.last_error = "transport payload is not a wake request"
+            return False
+        if destination_peer_id != self.local_peer_id:
+            self.last_error = "wake envelope targets a different supervisor peer"
+            return False
+        if not isinstance(source_peer_id, str) or not source_peer_id:
+            self.last_error = "wake envelope source peer is invalid"
+            return False
+        if not isinstance(payload, bytes):
+            self.last_error = "wake envelope payload must be bytes"
+            return False
+
+        try:
+            outcome = self.supervisor.handle_authenticated_payload(
+                payload,
+                authenticated_source_peer_id=source_peer_id,
+                now_ms=self.now_ms_provider(),
+                power_state=self.power_state_provider(),
+            )
+        except (WakePolicyError, FounderWakeActuationError, ValueError, TypeError) as exc:
+            self.last_error = (str(exc) or type(exc).__name__)[:256]
+            self.last_outcome = None
+            return False
+
+        self.last_error = None
+        self.last_outcome = outcome
+        return outcome.accepted
 
 
 def _decode_payload(payload: bytes) -> Mapping[str, Any]:
