@@ -20,11 +20,14 @@
     "max_age_seconds": 20.0,
     "storage_paths": [
       {
-        "resource_id": "storage.library-1tb",
-        "path": "/mnt/velvet-library",
+        "resource_id": "storage.vault-1tb",
+        "path": "/srv/velvet",
         "scope": "attached",
         "capabilities": [
-          "library.archive"
+          "vault.storage",
+          "library.archive",
+          "receipts.archive",
+          "media.archive"
         ]
       }
     ],
