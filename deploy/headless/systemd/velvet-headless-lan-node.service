@@ -1,7 +1,8 @@
 [Unit]
 Description=Velvet Headless LAN Specialist Node
 Documentation=file:/opt/velvet/velvet-runtime/docs/headless_lan_nodes.md
-After=local-fs.target network.target
+Wants=network-online.target
+After=local-fs.target network-online.target
 StartLimitIntervalSec=60
 StartLimitBurst=5
 
