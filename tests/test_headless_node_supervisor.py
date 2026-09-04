@@ -1,8 +1,8 @@
 import json
 import subprocess
+import tempfile
+import unittest
 from pathlib import Path
-
-import pytest
 
 from services.headless_node_supervisor import (
     HEADLESS_STATUS_SCHEMA,
@@ -44,100 +44,106 @@ def mapping(root, storage_path):
     }
 
 
-def write_config(tmp_path, value):
-    path = tmp_path / "node.json"
+def write_config(root, value):
+    path = root / "node.json"
     path.write_text(json.dumps(value), encoding="utf-8")
     return path
 
 
-def test_headless_node_observation_includes_declared_storage(tmp_path):
-    storage = tmp_path / "library"
-    storage.mkdir()
-    config_path = write_config(tmp_path, mapping(tmp_path, storage))
-    config = HeadlessNodeConfig.load(config_path.resolve())
-    snapshot = HeadlessNodeSupervisor(config).observe_once(now=123.0)
+class HeadlessNodeSupervisorTests(unittest.TestCase):
+    def test_headless_node_observation_includes_declared_storage(self):
+        with tempfile.TemporaryDirectory() as raw_root:
+            root = Path(raw_root)
+            storage = root / "library"
+            storage.mkdir()
+            config_path = write_config(root, mapping(root, storage))
+            config = HeadlessNodeConfig.load(config_path.resolve())
+            snapshot = HeadlessNodeSupervisor(config).observe_once(now=123.0)
 
-    assert snapshot["schema"] == HEADLESS_STATUS_SCHEMA
-    assert snapshot["node_id"] == "velour-lyra-1"
-    assert snapshot["organ"] == "velour"
-    assert snapshot["headless"] is True
-    assert snapshot["ui_present"] is False
-    assert snapshot["canonical"] is False
-    assert snapshot["authority"] == "none"
-    assert snapshot["grants_execution"] is False
-    assert snapshot["grants_actuation"] is False
+            self.assertEqual(snapshot["schema"], HEADLESS_STATUS_SCHEMA)
+            self.assertEqual(snapshot["node_id"], "velour-lyra-1")
+            self.assertEqual(snapshot["organ"], "velour")
+            self.assertIs(snapshot["headless"], True)
+            self.assertIs(snapshot["ui_present"], False)
+            self.assertIs(snapshot["canonical"], False)
+            self.assertEqual(snapshot["authority"], "none")
+            self.assertIs(snapshot["grants_execution"], False)
+            self.assertIs(snapshot["grants_actuation"], False)
 
-    resources = {item["resource_id"]: item for item in snapshot["resources"]}
-    assert "memory.ram" in resources
-    assert "compute.logical-cpu" in resources
-    assert "storage.library" in resources
-    assert resources["storage.library"]["scope"] == "attached"
-    assert resources["storage.library"]["authority"] == "none"
+            resources = {item["resource_id"]: item for item in snapshot["resources"]}
+            self.assertIn("memory.ram", resources)
+            self.assertIn("compute.logical-cpu", resources)
+            self.assertIn("storage.library", resources)
+            self.assertEqual(resources["storage.library"]["scope"], "attached")
+            self.assertEqual(resources["storage.library"]["authority"], "none")
 
-    persisted = json.loads(config.state_path.read_text(encoding="utf-8"))
-    assert persisted == snapshot
-    assert config.state_path.stat().st_mode & 0o077 == 0
+            persisted = json.loads(config.state_path.read_text(encoding="utf-8"))
+            self.assertEqual(persisted, snapshot)
+            self.assertEqual(config.state_path.stat().st_mode & 0o077, 0)
 
+    def test_missing_declared_storage_is_not_invented(self):
+        with tempfile.TemporaryDirectory() as raw_root:
+            root = Path(raw_root)
+            missing = root / "not-mounted"
+            config_path = write_config(root, mapping(root, missing))
+            config = HeadlessNodeConfig.load(config_path.resolve())
+            snapshot = HeadlessNodeSupervisor(config).observe_once(now=10.0)
 
-def test_missing_declared_storage_is_not_invented(tmp_path):
-    missing = tmp_path / "not-mounted"
-    config_path = write_config(tmp_path, mapping(tmp_path, missing))
-    config = HeadlessNodeConfig.load(config_path.resolve())
-    snapshot = HeadlessNodeSupervisor(config).observe_once(now=10.0)
+            ids = {item["resource_id"] for item in snapshot["resources"]}
+            self.assertNotIn("storage.library", ids)
 
-    ids = {item["resource_id"] for item in snapshot["resources"]}
-    assert "storage.library" not in ids
+    def test_config_rejects_ui_or_authority_promotion(self):
+        with tempfile.TemporaryDirectory() as raw_root:
+            root = Path(raw_root)
+            storage = root / "library"
+            storage.mkdir()
 
+            unsafe = mapping(root, storage)
+            unsafe["ui_present"] = True
+            with self.assertRaisesRegex(HeadlessNodeConfigError, "ui_present"):
+                HeadlessNodeConfig.load(write_config(root, unsafe).resolve())
 
-def test_config_rejects_ui_or_authority_promotion(tmp_path):
-    storage = tmp_path / "library"
-    storage.mkdir()
-    unsafe = mapping(tmp_path, storage)
-    unsafe["ui_present"] = True
-    with pytest.raises(HeadlessNodeConfigError, match="ui_present"):
-        HeadlessNodeConfig.load(write_config(tmp_path, unsafe).resolve())
+            unsafe = mapping(root, storage)
+            unsafe["authority"] = "court"
+            with self.assertRaisesRegex(HeadlessNodeConfigError, "authority"):
+                HeadlessNodeConfig.load(write_config(root, unsafe).resolve())
 
-    unsafe = mapping(tmp_path, storage)
-    unsafe["authority"] = "court"
-    with pytest.raises(HeadlessNodeConfigError, match="authority"):
-        HeadlessNodeConfig.load(write_config(tmp_path, unsafe).resolve())
-
-
-def test_example_is_headless_and_uses_existing_body_id():
-    raw = json.loads(
-        (ROOT / "config" / "headless-velour-lyra.example.json").read_text(
-            encoding="utf-8"
+    def test_example_is_headless_and_uses_existing_body_id(self):
+        raw = json.loads(
+            (ROOT / "config" / "headless-velour-lyra.example.json").read_text(
+                encoding="utf-8"
+            )
         )
-    )
-    assert raw["body_id"] == "velvet-body"
-    assert raw["headless"] is True
-    assert raw["ui_present"] is False
-    assert raw["authority"] == "none"
+        self.assertEqual(raw["body_id"], "velvet-body")
+        self.assertIs(raw["headless"], True)
+        self.assertIs(raw["ui_present"], False)
+        self.assertEqual(raw["authority"], "none")
+
+    def test_systemd_unit_has_no_graphical_or_network_listener_dependency(self):
+        text = (
+            ROOT / "deploy" / "headless" / "systemd" / "velvet-headless-node.service"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn("graphical.target", text)
+        self.assertNotIn("Display", text)
+        self.assertIn("RestrictAddressFamilies=AF_UNIX", text)
+        self.assertIn("NoNewPrivileges=true", text)
+
+    def test_headless_shell_scripts_are_syntax_valid(self):
+        scripts = (
+            ROOT / "deploy" / "headless" / "buildroot" / "S70velvet-node",
+            ROOT / "scripts" / "install_headless_node.sh",
+        )
+        for script in scripts:
+            with self.subTest(script=str(script)):
+                completed = subprocess.run(
+                    ["sh", "-n", str(script)],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    check=False,
+                )
+                self.assertEqual(completed.returncode, 0, completed.stderr)
 
 
-def test_systemd_unit_has_no_graphical_or_network_listener_dependency():
-    text = (
-        ROOT / "deploy" / "headless" / "systemd" / "velvet-headless-node.service"
-    ).read_text(encoding="utf-8")
-    assert "graphical.target" not in text
-    assert "Display" not in text
-    assert "RestrictAddressFamilies=AF_UNIX" in text
-    assert "NoNewPrivileges=true" in text
-
-
-@pytest.mark.parametrize(
-    "script",
-    [
-        ROOT / "deploy" / "headless" / "buildroot" / "S70velvet-node",
-        ROOT / "scripts" / "install_headless_node.sh",
-    ],
-)
-def test_headless_shell_scripts_are_syntax_valid(script):
-    completed = subprocess.run(
-        ["sh", "-n", str(script)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        check=False,
-    )
-    assert completed.returncode == 0, completed.stderr
+if __name__ == "__main__":
+    unittest.main()
