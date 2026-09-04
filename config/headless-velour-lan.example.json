@@ -1,0 +1,36 @@
+{
+  "schema": "velvet.runtime.headless_lan_node.v1",
+  "node_config_path": "/etc/velvet/node.json",
+  "runner_state_path": "/var/lib/velvet-node/runner-state.json",
+  "journal_path": "/var/lib/velvet-node/lan-node.jsonl",
+  "network": {
+    "founder_peer_id": "founder",
+    "founder_host": "192.168.50.10",
+    "founder_port": 8770,
+    "listen_host": "0.0.0.0",
+    "listen_port": 8770,
+    "peer_secret_file": "/etc/velvet/secrets/founder.secret"
+  },
+  "role": {
+    "capabilities": [
+      "summarise-records"
+    ],
+    "accepted_work_classes": [
+      "record-summary"
+    ],
+    "handlers": [
+      "record-summary"
+    ],
+    "max_concurrent_tasks": 1,
+    "refused_work_classes": [],
+    "overflow_capable": false,
+    "overflow_capabilities": [],
+    "temporary_absorption_capabilities": []
+  },
+  "transport_only": true,
+  "canonical": false,
+  "grants_authority": false,
+  "grants_execution": false,
+  "grants_actuation": false,
+  "authority": "none"
+}

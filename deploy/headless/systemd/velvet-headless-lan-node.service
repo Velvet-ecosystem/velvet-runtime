@@ -1,0 +1,35 @@
+[Unit]
+Description=Velvet Headless LAN Specialist Node
+Documentation=file:/opt/velvet/velvet-runtime/docs/headless_lan_nodes.md
+Wants=network-online.target
+After=local-fs.target network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=velvet
+Group=velvet
+WorkingDirectory=/opt/velvet/velvet-runtime
+ExecStart=/usr/bin/python3 -m services.headless_lan_node_daemon --config /etc/velvet/lan-node.json
+Restart=on-failure
+RestartSec=2
+KillSignal=SIGTERM
+TimeoutStopSec=20
+StateDirectory=velvet-node
+StateDirectoryMode=0750
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/velvet-node
+CapabilityBoundingSet=
+AmbientCapabilities=
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET
+
+[Install]
+WantedBy=multi-user.target

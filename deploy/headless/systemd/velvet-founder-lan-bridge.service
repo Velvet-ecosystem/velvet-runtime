@@ -1,0 +1,38 @@
+[Unit]
+Description=Velvet Founder Body Runtime with Authenticated LAN Bridge
+Documentation=file:/opt/velvet/velvet-runtime/docs/headless_lan_nodes.md
+Wants=network-online.target
+After=local-fs.target network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=velvet
+Group=velvet
+WorkingDirectory=/opt/velvet/velvet-runtime
+ExecStart=/usr/bin/python3 -m services.founder_lan_bridge_daemon --config /etc/velvet/founder-lan-bridge.json
+Restart=on-failure
+RestartSec=2
+KillSignal=SIGTERM
+TimeoutStopSec=25
+RuntimeDirectory=velvet
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=restart
+StateDirectory=velvet-runtime
+StateDirectoryMode=0750
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/run/velvet /var/lib/velvet-runtime
+CapabilityBoundingSet=
+AmbientCapabilities=
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET
+
+[Install]
+WantedBy=multi-user.target
