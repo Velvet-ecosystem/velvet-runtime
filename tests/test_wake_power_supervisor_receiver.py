@@ -128,6 +128,17 @@ class AuthenticatedWakeEnvelopeReceiverTests(unittest.TestCase):
         self.assertEqual(callback.last_error, None)
         self.assertEqual(len(sockets.instances), 1)
 
+    def test_duplicate_authenticated_envelope_is_acked_without_second_wake(self):
+        callback, sockets = receiver()
+        envelope = Envelope(payload=wake_payload())
+        self.assertTrue(callback(envelope))
+        self.assertEqual(len(sockets.instances), 1)
+        self.assertTrue(callback(envelope))
+        self.assertIsNotNone(callback.last_outcome)
+        self.assertEqual(callback.last_outcome.decision.state, "duplicate")
+        self.assertFalse(callback.last_outcome.dispatched)
+        self.assertEqual(len(sockets.instances), 1)
+
     def test_wrong_payload_type_is_rejected_before_policy(self):
         callback, sockets = receiver()
         accepted = callback(
