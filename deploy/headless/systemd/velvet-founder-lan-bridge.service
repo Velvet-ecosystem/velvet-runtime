@@ -1,7 +1,8 @@
 [Unit]
 Description=Velvet Founder Body Runtime with Authenticated LAN Bridge
 Documentation=file:/opt/velvet/velvet-runtime/docs/headless_lan_nodes.md
-After=local-fs.target network.target
+Wants=network-online.target
+After=local-fs.target network-online.target
 StartLimitIntervalSec=60
 StartLimitBurst=5
 
@@ -15,12 +16,17 @@ Restart=on-failure
 RestartSec=2
 KillSignal=SIGTERM
 TimeoutStopSec=25
+RuntimeDirectory=velvet
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=restart
+StateDirectory=velvet-runtime
+StateDirectoryMode=0750
 UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/velvet/state /var/lib/velvet-node
+ReadWritePaths=/run/velvet /var/lib/velvet-runtime
 CapabilityBoundingSet=
 AmbientCapabilities=
 LockPersonality=true
