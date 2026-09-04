@@ -7,14 +7,14 @@ through a live resource-bound Runtime coordinator, so declared RAM, storage,
 compute, or accelerator requirements are enforced or the proposal degrades.
 They are never silently ignored by a Runtime that has no body-resource view.
 
-Resource eligibility changes placement only. It does not grant Court authority,
-execution permission, actuation, or canonical status.
+Resource eligibility and reservation change placement only. They do not grant
+Court authority, execution permission, actuation, or canonical status.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Iterable, Optional, Sequence, Tuple
+from typing import Dict, Iterable, Sequence, Tuple
 
 from services.body_capacity import (
     ResourceAwareWorkCoordinator,
@@ -30,6 +30,11 @@ from services.distributed_work_service import (
     DistributedWorkService,
     DistributedWorkServiceOutcome,
     WorkProposal,
+)
+from services.resource_reservations import (
+    ResourceReservation,
+    ResourceReservationLedger,
+    ResourceReservationUnavailable,
 )
 
 
@@ -76,6 +81,7 @@ class LiveResourceAwareCoordinator:
             coordinator,
             resource_service.registry,
         )
+        self.reservations = ResourceReservationLedger()
         self._declared: Dict[str, Tuple[ResourceRequirement, ...]] = {}
 
     @property
@@ -99,8 +105,10 @@ class LiveResourceAwareCoordinator:
         self._declared[key] = values
 
     def cancel_declaration(self, work_id: str) -> None:
-        self._declared.pop(_normal(work_id), None)
-        self.resource_coordinator._requirements.pop(_normal(work_id), None)
+        key = _normal(work_id)
+        self._declared.pop(key, None)
+        self.resource_coordinator._requirements.pop(key, None)
+        self.reservations.release(key)
 
     def place(
         self,
@@ -110,15 +118,20 @@ class LiveResourceAwareCoordinator:
         lease_seconds: float = 60.0,
         exclude_nodes: Iterable[str] = (),
     ) -> WorkPlacementDecision:
-        self.resource_service.prune(now=now)
+        self._prune(now)
         work_id = _normal(requirement.work_id)
         resource_requirements = self._declared.pop(work_id, ())
-        return self.resource_coordinator.place(
+        decision = self.resource_coordinator.place(
             requirement,
             resource_requirements=resource_requirements,
             now=now,
             lease_seconds=lease_seconds,
             exclude_nodes=exclude_nodes,
+        )
+        return self._ensure_reserved(
+            decision,
+            now=now,
+            lease_seconds=lease_seconds,
         )
 
     def refuse_and_reassign(
@@ -130,11 +143,17 @@ class LiveResourceAwareCoordinator:
         now: float,
         lease_seconds: float = 60.0,
     ) -> WorkPlacementDecision:
-        self.resource_service.prune(now=now)
-        return self.resource_coordinator.refuse_and_reassign(
+        self._prune(now)
+        self.reservations.release(work_id)
+        decision = self.resource_coordinator.refuse_and_reassign(
             work_id=work_id,
             node_id=node_id,
             reason=reason,
+            now=now,
+            lease_seconds=lease_seconds,
+        )
+        return self._ensure_reserved(
+            decision,
             now=now,
             lease_seconds=lease_seconds,
         )
@@ -148,24 +167,32 @@ class LiveResourceAwareCoordinator:
         reason: str = "overloaded",
         lease_seconds: float = 60.0,
     ) -> WorkPlacementDecision:
-        self.resource_service.prune(now=now)
-        return self.resource_coordinator.handoff(
+        return self.refuse_and_reassign(
             work_id=work_id,
-            from_node_id=from_node_id,
-            now=now,
+            node_id=from_node_id,
             reason=reason,
+            now=now,
             lease_seconds=lease_seconds,
         )
 
     def complete(self, *, work_id: str, node_id: str) -> bool:
         self._declared.pop(_normal(work_id), None)
-        return self.resource_coordinator.complete(work_id=work_id, node_id=node_id)
+        completed = self.resource_coordinator.complete(work_id=work_id, node_id=node_id)
+        if completed:
+            self.reservations.release(work_id)
+        return completed
 
     def lease_for(self, work_id: str):
         return self.coordinator.lease_for(work_id)
 
     def snapshot(self):
         return self.coordinator.snapshot()
+
+    def reservation_for(self, work_id: str):
+        return self.reservations.get(work_id)
+
+    def reservation_snapshot(self) -> Tuple[ResourceReservation, ...]:
+        return self.reservations.snapshot()
 
     def recover_unavailable_nodes(
         self,
@@ -174,7 +201,8 @@ class LiveResourceAwareCoordinator:
         max_heartbeat_age: float,
         lease_seconds: float = 60.0,
     ) -> Tuple[WorkPlacementDecision, ...]:
-        self.resource_service.prune(now=now)
+        self._prune(now)
+        prior = {lease.work_id: lease for lease in self.coordinator.snapshot()}
         decisions = self.coordinator.recover_unavailable_nodes(
             now=now,
             max_heartbeat_age=max_heartbeat_age,
@@ -182,6 +210,8 @@ class LiveResourceAwareCoordinator:
         )
         bounded = []
         for decision in decisions:
+            work_id = _recovery_work_id(decision, prior)
+            self.reservations.release(work_id)
             current = decision
             if current.lease is not None:
                 replacement = self.resource_coordinator.revalidate(
@@ -191,8 +221,60 @@ class LiveResourceAwareCoordinator:
                 )
                 if replacement is not None:
                     current = replacement
+                current = self._ensure_reserved(
+                    current,
+                    now=now,
+                    lease_seconds=lease_seconds,
+                )
             bounded.append(current)
         return tuple(bounded)
+
+    def _prune(self, now: float) -> None:
+        self.resource_service.prune(now=now)
+        self.reservations.prune(now=now)
+
+    def _ensure_reserved(
+        self,
+        decision: WorkPlacementDecision,
+        *,
+        now: float,
+        lease_seconds: float,
+    ) -> WorkPlacementDecision:
+        current = decision
+        max_attempts = max(1, len(self.coordinator.registry.snapshot()))
+        attempts = 0
+        while current.placed and current.lease is not None:
+            lease = current.lease
+            requirements = self.resource_coordinator._requirements.get(
+                _normal(lease.work_id), ()
+            )
+            if not requirements:
+                return current
+            advertisement = self.resource_service.registry.get(lease.node_id)
+            if advertisement is not None:
+                try:
+                    self.reservations.reserve(
+                        work_id=lease.work_id,
+                        lease_id=lease.lease_id,
+                        node_id=lease.node_id,
+                        expires_at=lease.expires_at,
+                        advertisement=advertisement,
+                        requirements=requirements,
+                    )
+                    return current
+                except ResourceReservationUnavailable:
+                    pass
+            attempts += 1
+            if attempts > max_attempts:
+                raise RuntimeError("resource reservation reassignment exceeded node bound")
+            current = self.resource_coordinator.refuse_and_reassign(
+                work_id=lease.work_id,
+                node_id=lease.node_id,
+                reason="resource-reservation-unavailable",
+                now=now,
+                lease_seconds=lease_seconds,
+            )
+        return current
 
 
 class ResourceAwareProposalSubmitter:
@@ -259,6 +341,27 @@ def bind_live_resource_placement(
     # Binding happens once during daemon construction before any request is served.
     service._coordinator = live
     return live, ResourceAwareProposalSubmitter(service, live)
+
+
+def _recovery_work_id(
+    decision: WorkPlacementDecision,
+    prior: Dict[str, object],
+) -> str:
+    if decision.lease is not None:
+        return decision.lease.work_id
+    recovered_nodes = tuple(
+        reason.split(":", 1)[1]
+        for reason in decision.reasons
+        if reason.startswith("recovery-from:")
+    )
+    matches = tuple(
+        work_id
+        for work_id, lease in prior.items()
+        if getattr(lease, "node_id", None) in recovered_nodes
+    )
+    if len(matches) != 1:
+        raise RuntimeError("could not identify resource reservation recovery work")
+    return matches[0]
 
 
 def _validate_requirements(
