@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from services.body_capacity import ResourceKind, ResourceScope
 from services.founder_lan_bridge_daemon import (
     FounderLanBridgeConfig,
     FounderLanBridgeConfigError,
@@ -10,10 +11,54 @@ from services.founder_lan_bridge_daemon import (
 from services.headless_lan_node_daemon import (
     HeadlessLanNodeConfig,
     HeadlessLanNodeConfigError,
+    _advertisement_from_headless_status,
 )
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def safe_headless_status():
+    return {
+        "schema": "velvet.runtime.headless_node_status.v1",
+        "node_id": "velour-lyra-1",
+        "body_id": "velvet-body",
+        "organ": "velour",
+        "observed_at": 10.0,
+        "body_verified": True,
+        "continuity_verified": True,
+        "resources": [
+            {
+                "resource_id": "memory.ram",
+                "kind": "memory",
+                "scope": "local",
+                "capacity": 512.0 * 1024.0 * 1024.0,
+                "available": 300.0 * 1024.0 * 1024.0,
+                "unit": "bytes",
+                "capabilities": [],
+                "online": True,
+                "authority": "none",
+            },
+            {
+                "resource_id": "storage.library",
+                "kind": "storage",
+                "scope": "attached",
+                "capacity": 1_000_000_000_000.0,
+                "available": 800_000_000_000.0,
+                "unit": "bytes",
+                "capabilities": ["library.archive", "library.retrieve"],
+                "online": True,
+                "authority": "none",
+            },
+        ],
+        "headless": True,
+        "ui_present": False,
+        "canonical": False,
+        "grants_authority": False,
+        "grants_execution": False,
+        "grants_actuation": False,
+        "authority": "none",
+    }
 
 
 class HeadlessLanNodeDeploymentTests(unittest.TestCase):
@@ -79,6 +124,38 @@ class HeadlessLanNodeDeploymentTests(unittest.TestCase):
                 FounderLanBridgeConfigError, "peer IDs must be unique"
             ):
                 FounderLanBridgeConfig.load(path)
+
+    def test_one_local_snapshot_becomes_the_outbound_resource_advertisement(self):
+        advertisement = _advertisement_from_headless_status(
+            safe_headless_status(),
+            expected_node_id="velour-lyra-1",
+            expected_body_id="velvet-body",
+        )
+        self.assertEqual(advertisement.node_id, "velour-lyra-1")
+        self.assertEqual(advertisement.body_id, "velvet-body")
+        self.assertEqual(len(advertisement.resources), 2)
+        self.assertEqual(advertisement.resources[0].kind, ResourceKind.MEMORY)
+        self.assertEqual(advertisement.resources[1].scope, ResourceScope.ATTACHED)
+        self.assertIn("library.retrieve", advertisement.resources[1].capabilities)
+        self.assertEqual(advertisement.authority, "none")
+
+    def test_local_snapshot_cannot_smuggle_authority_into_resource_heartbeat(self):
+        snapshot = safe_headless_status()
+        snapshot["resources"][0]["authority"] = "court"
+        with self.assertRaisesRegex(ValueError, "cannot carry authority"):
+            _advertisement_from_headless_status(
+                snapshot,
+                expected_node_id="velour-lyra-1",
+                expected_body_id="velvet-body",
+            )
+
+    def test_lan_heartbeat_does_not_probe_resources_twice(self):
+        source = (
+            ROOT / "services" / "headless_lan_node_daemon.py"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn("headless.probe.probe", source)
+        self.assertIn("headless.observe_once", source)
+        self.assertIn("_advertisement_from_headless_status", source)
 
     def test_systemd_units_use_real_state_paths_and_no_desktop_dependency(self):
         node = (
