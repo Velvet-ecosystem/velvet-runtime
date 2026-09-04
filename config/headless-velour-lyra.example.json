@@ -10,7 +10,7 @@
   "storage_paths": [
     {
       "resource_id": "storage.vault-1tb",
-      "path": "/srv/velvet",
+      "path": "/srv/velvet/.velvet-vault.json",
       "scope": "attached",
       "capabilities": [
         "vault.storage",
