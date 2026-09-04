@@ -33,7 +33,7 @@ By default the probe observes:
 - only explicitly configured storage paths through `os.statvfs()`;
 - explicitly configured extra resources such as a reviewed accelerator.
 
-A configured filesystem that disappears is omitted from the next heartbeat instead of being remembered as fictional capacity.
+A configured storage target that disappears is omitted from the next heartbeat instead of being remembered as fictional capacity.
 
 Example for the current 1 TB Velvet vault:
 
@@ -45,7 +45,7 @@ Example for the current 1 TB Velvet vault:
   "storage_paths": [
     {
       "resource_id": "storage.vault-1tb",
-      "path": "/srv/velvet",
+      "path": "/srv/velvet/.velvet-vault.json",
       "scope": "attached",
       "capabilities": [
         "vault.storage",
@@ -58,7 +58,9 @@ Example for the current 1 TB Velvet vault:
 }
 ```
 
-`/srv/velvet` is the shared deployment convention for the mounted vault. The resource heartbeat describes capacity and reviewed storage roles only; it does not expose vault contents or grant access to them.
+`/srv/velvet` is the shared deployment convention for the mounted vault. Runtime probes the vault manifest inside that filesystem rather than the bare mountpoint. `os.statvfs()` reports the same filesystem capacity for the manifest file, but if the vault is unmounted the manifest disappears and the probe omits `storage.vault-1tb` instead of accidentally advertising the underlying Founder filesystem.
+
+The manifest is only a presence sentinel for resource observation. It does not make the mounted bytes trusted, authorize filesystem access, or grant storage authority.
 
 ## Specialist / Lyra
 
@@ -91,9 +93,10 @@ Founder heartbeat
   storage.vault-1tb -> attached, online
 
 remove drive
+  /srv/velvet/.velvet-vault.json disappears
   next Founder heartbeat omits storage.vault-1tb
 
-attach drive to Velour at /srv/velvet
+attach and initialize/mount drive on Velour at /srv/velvet
   Velour heartbeat advertises storage.vault-1tb
 ```
 
