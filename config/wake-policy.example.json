@@ -1,0 +1,52 @@
+{
+  "schema": "velvet.runtime.wake_policy.v1",
+  "target_body_id": "velvet-body",
+  "sources": [
+    {
+      "source_peer_id": "security-lyra-1",
+      "allowed_reasons": [
+        "security_motion",
+        "security_tamper",
+        "security_forced_entry",
+        "security_glass_break",
+        "security_video_anomaly"
+      ],
+      "minimum_severity": "attention",
+      "evidence_required_reasons": [
+        "security_video_anomaly"
+      ],
+      "max_requests_per_window": 4,
+      "window_ms": 300000,
+      "cooldown_ms": 15000
+    },
+    {
+      "source_peer_id": "velour-lyra-1",
+      "allowed_reasons": [
+        "node_health",
+        "scheduled"
+      ],
+      "minimum_severity": "attention",
+      "evidence_required_reasons": [],
+      "max_requests_per_window": 3,
+      "window_ms": 300000,
+      "cooldown_ms": 30000
+    },
+    {
+      "source_peer_id": "temperance-node-1",
+      "allowed_reasons": [
+        "medical_alert",
+        "safety_alert"
+      ],
+      "minimum_severity": "urgent",
+      "evidence_required_reasons": [],
+      "max_requests_per_window": 6,
+      "window_ms": 300000,
+      "cooldown_ms": 5000
+    }
+  ],
+  "canonical": false,
+  "grants_authority": false,
+  "grants_execution": false,
+  "grants_actuation": false,
+  "authority": "none"
+}
