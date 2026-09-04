@@ -1,7 +1,7 @@
 {
   "schema": "velvet.runtime.headless_node.v1",
   "node_id": "velour-lyra-1",
-  "body_id": "velvet-founder-body",
+  "body_id": "velvet-body",
   "organ": "velour",
   "state_path": "/var/lib/velvet-node/status.json",
   "heartbeat_seconds": 5.0,
