@@ -181,7 +181,7 @@ class HeadlessLanNodeDeploymentTests(unittest.TestCase):
         self.assertNotIn("velvet-distributed-runtime.service", node)
 
         self.assertIn("network-online.target", founder)
-        self.assertIn("services.founder_lan_bridge_daemon", founder)
+        self.assertIn("services.resource_aware_founder_lan_bridge_daemon", founder)
         self.assertIn("RuntimeDirectory=velvet", founder)
         self.assertIn("StateDirectory=velvet-runtime", founder)
         self.assertIn(
