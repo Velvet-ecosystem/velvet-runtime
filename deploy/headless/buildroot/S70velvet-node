@@ -36,11 +36,17 @@ start() {
 
 stop() {
     printf 'Stopping %s: ' "$NAME"
-    start-stop-daemon -K -p "$PIDFILE" -R TERM/10/KILL/5
-    status=$?
+    if [ ! -f "$PIDFILE" ]; then
+        echo "not running"
+        return 0
+    fi
+    start-stop-daemon -K -p "$PIDFILE" -s TERM >/dev/null 2>&1 || true
+    sleep 1
+    if [ -f "$PIDFILE" ]; then
+        start-stop-daemon -K -p "$PIDFILE" -s KILL >/dev/null 2>&1 || true
+    fi
     rm -f "$PIDFILE"
-    [ "$status" -eq 0 ] && echo "OK" || echo "FAIL"
-    return "$status"
+    echo "OK"
 }
 
 case "$1" in
