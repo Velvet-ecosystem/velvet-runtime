@@ -131,7 +131,7 @@ The Buildroot script requires:
 
 Configured storage remains attributed to the host that can actually observe it.
 
-If `/mnt/velvet-library` is attached to Founder, Founder advertises that storage. If it is unplugged, the next probe omits it. If the same drive is later attached to Velour and configured there, Velour advertises it. The Library route changes; the system does not pretend the disk is physically local to Founder.
+The shared vault convention is `/srv/velvet`. If the 1 TB vault is attached to Founder, Founder advertises `storage.vault-1tb`. If it is unplugged, the next probe omits it. If the same drive is later attached to Velour, mounted at `/srv/velvet`, and configured there, Velour advertises it. The Library route changes; the system does not pretend the disk is physically local to Founder.
 
 ## Expected bench evidence
 
