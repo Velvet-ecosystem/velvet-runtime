@@ -1,0 +1,34 @@
+[Unit]
+Description=Velvet Headless Node Supervisor
+Documentation=file:/opt/velvet/velvet-runtime/docs/headless_node_deployment.md
+After=local-fs.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=velvet
+Group=velvet
+WorkingDirectory=/opt/velvet/velvet-runtime
+ExecStart=/usr/bin/python3 -m services.headless_node_supervisor --config /etc/velvet/node.json
+Restart=on-failure
+RestartSec=2
+KillSignal=SIGTERM
+TimeoutStopSec=15
+StateDirectory=velvet-node
+StateDirectoryMode=0750
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/velvet-node
+CapabilityBoundingSet=
+AmbientCapabilities=
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

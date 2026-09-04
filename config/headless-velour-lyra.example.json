@@ -1,0 +1,29 @@
+{
+  "schema": "velvet.runtime.headless_node.v1",
+  "node_id": "velour-lyra-1",
+  "body_id": "velvet-body",
+  "organ": "velour",
+  "state_path": "/var/lib/velvet-node/status.json",
+  "heartbeat_seconds": 5.0,
+  "body_verified": true,
+  "continuity_verified": true,
+  "storage_paths": [
+    {
+      "resource_id": "storage.library",
+      "path": "/mnt/velvet-library",
+      "scope": "attached",
+      "capabilities": [
+        "library.archive",
+        "library.retrieve"
+      ]
+    }
+  ],
+  "extra_resources": [],
+  "headless": true,
+  "ui_present": false,
+  "canonical": false,
+  "grants_authority": false,
+  "grants_execution": false,
+  "grants_actuation": false,
+  "authority": "none"
+}
