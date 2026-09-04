@@ -1,0 +1,26 @@
+{
+  "schema": "velvet.runtime.founder_wake_actuator.v1",
+  "target_body_id": "velvet-body",
+  "wake_on_lan": {
+    "enabled": true,
+    "mac_address": "00:11:22:33:44:55",
+    "broadcast_address": "192.168.50.255",
+    "port": 9,
+    "repeats": 3
+  },
+  "power_button_contact": {
+    "enabled": false,
+    "pulse_ms": 250
+  },
+  "method_by_power_state": {
+    "awake": null,
+    "suspended": "wake_on_lan",
+    "off": "wake_on_lan",
+    "unknown": null
+  },
+  "canonical": false,
+  "grants_authority": false,
+  "grants_execution": false,
+  "grants_actuation": false,
+  "authority": "none"
+}
