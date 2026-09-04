@@ -98,6 +98,12 @@ class WakePowerSupervisor:
         if not decision.accepted:
             return WakeSupervisorOutcome(decision=decision, actuation=None)
 
+        # A retransmitted request must be acknowledged without touching the wake
+        # hardware again. Policy has already proved that this is byte-for-byte the
+        # same request ID and content as the earlier accepted decision.
+        if decision.state == "duplicate":
+            return WakeSupervisorOutcome(decision=decision, actuation=None)
+
         actuation = self.dispatcher.dispatch(decision)
         if actuation.dispatched and self.reason_store is not None:
             self.reason_store.record(decision)
