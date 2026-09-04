@@ -23,6 +23,7 @@ from services.body_capacity import (
 from services.body_resource_transport import BodyResourceService
 from services.distributed_work_coordinator import (
     DistributedWorkCoordinator,
+    NodeAvailability,
     WorkPlacementDecision,
     WorkRequirement,
 )
@@ -144,7 +145,9 @@ class LiveResourceAwareCoordinator:
         lease_seconds: float = 60.0,
     ) -> WorkPlacementDecision:
         self._prune(now)
-        self.reservations.release(work_id)
+        lease = self.coordinator.lease_for(work_id)
+        if lease is not None and lease.node_id == _normal(node_id):
+            self.reservations.release(work_id)
         decision = self.resource_coordinator.refuse_and_reassign(
             work_id=work_id,
             node_id=node_id,
@@ -203,14 +206,35 @@ class LiveResourceAwareCoordinator:
     ) -> Tuple[WorkPlacementDecision, ...]:
         self._prune(now)
         prior = {lease.work_id: lease for lease in self.coordinator.snapshot()}
+        stale = set(
+            self.coordinator.registry.expired_node_ids(
+                now=now,
+                max_age_seconds=max_heartbeat_age,
+            )
+        )
+        unavailable = {
+            node.node_id
+            for node in self.coordinator.registry.snapshot()
+            if node.availability in {
+                NodeAvailability.OFFLINE,
+                NodeAvailability.QUARANTINED,
+            }
+        }
+        failed = stale | unavailable
+        affected_work_ids = tuple(
+            work_id
+            for work_id, lease in sorted(prior.items())
+            if float(now) < float(lease.expires_at) and lease.node_id in failed
+        )
         decisions = self.coordinator.recover_unavailable_nodes(
             now=now,
             max_heartbeat_age=max_heartbeat_age,
             lease_seconds=lease_seconds,
         )
+        if len(decisions) != len(affected_work_ids):
+            raise RuntimeError("resource recovery work count diverged from coordinator")
         bounded = []
-        for decision in decisions:
-            work_id = _recovery_work_id(decision, prior)
+        for work_id, decision in zip(affected_work_ids, decisions):
             self.reservations.release(work_id)
             current = decision
             if current.lease is not None:
@@ -341,27 +365,6 @@ def bind_live_resource_placement(
     # Binding happens once during daemon construction before any request is served.
     service._coordinator = live
     return live, ResourceAwareProposalSubmitter(service, live)
-
-
-def _recovery_work_id(
-    decision: WorkPlacementDecision,
-    prior: Dict[str, object],
-) -> str:
-    if decision.lease is not None:
-        return decision.lease.work_id
-    recovered_nodes = tuple(
-        reason.split(":", 1)[1]
-        for reason in decision.reasons
-        if reason.startswith("recovery-from:")
-    )
-    matches = tuple(
-        work_id
-        for work_id, lease in prior.items()
-        if getattr(lease, "node_id", None) in recovered_nodes
-    )
-    if len(matches) != 1:
-        raise RuntimeError("could not identify resource reservation recovery work")
-    return matches[0]
 
 
 def _validate_requirements(
