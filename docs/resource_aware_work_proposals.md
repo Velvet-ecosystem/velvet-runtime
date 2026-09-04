@@ -27,9 +27,12 @@ existing DistributedWorkCoordinator
         |
         v
 existing workload lease
+        |
+        v
+bounded ResourceReservation
 ```
 
-The existing coordinator still owns functional node verification, work-class acceptance, health/load checks, capability matching, overflow/fallback behavior, leasing, refusal, recovery, and completion. The resource layer only removes nodes that cannot satisfy the declared live resource requirements.
+The existing coordinator still owns functional node verification, work-class acceptance, health/load checks, capability matching, overflow/fallback behavior, leasing, refusal, recovery, and completion. The resource layer only removes or reassigns nodes that cannot satisfy the declared live resource requirements and the capacity already committed to other active work.
 
 ## Example
 
@@ -69,13 +72,33 @@ Placement prunes stale resource observations through the existing `BodyResourceS
 
 Functional heartbeat and resource heartbeat remain separate signals. A valid resource view does not make an unverified or unavailable functional node eligible.
 
+## Reservations
+
+Once the existing Runtime coordinator produces a workload lease, `ResourceReservationLedger` atomically commits the minimum declared amount against the exact resource IDs that satisfied the proposal.
+
+For example, if Velour reports 320 MiB available RAM and one active job reserves 256 MiB, another 256 MiB job cannot claim the same observation. Runtime either chooses another eligible organ or reports that compatible capacity is unavailable.
+
+Reservations are tied to the same work and lease identity. They are released when work completes, is refused or handed off, moves during recovery, or when the workload lease expires. Failed reservation attempts do not leave partial allocations behind.
+
+The ledger does not mutate resource advertisements. A heartbeat remains an observation of the physical node. Reservations are separate Runtime admission-control commitments layered over that observation.
+
+Multiple requirements in one proposal are allocated cumulatively. Two 200 MiB RAM requirements therefore cannot both reuse one 300 MiB free-RAM observation.
+
+## Conservative accounting
+
+Reservations are intentionally conservative. Runtime currently knows observed Linux availability and declared workload commitments, but it does not yet measure how much of each reservation a running process has physically consumed.
+
+Because of that, the full reserved amount remains charged until the lease moves, completes, or expires. This can under-utilize a node, but it prevents oversubscription. A later cgroup/process-telemetry layer may reconcile committed versus physically consumed capacity without weakening this admission boundary.
+
 ## Reassignment and recovery
 
-Declared resource requirements remain attached to the active work inside the existing resource-aware coordinator. Refusal, handoff, and unavailable-node recovery must therefore find a replacement that still satisfies the same resource requirements.
+Declared resource requirements remain attached to the active work inside the existing resource-aware coordinator. Refusal, handoff, and unavailable-node recovery must therefore find a replacement that still satisfies the same resource requirements and can acquire a fresh reservation.
+
+The old reservation is released before a replacement is committed. A replacement that cannot reserve its declared capacity is refused internally and Runtime continues through its existing bounded reassignment path.
 
 ## Authority boundary
 
-Resource requirements are placement constraints only.
+Resource requirements and reservations are placement constraints only.
 
 They do not grant:
 
@@ -87,7 +110,7 @@ They do not grant:
 - canonical memory status
 - body membership
 
-The resulting workload lease remains the same non-authoritative Runtime lease used by ordinary distributed work.
+The resulting workload lease remains the same non-authoritative Runtime lease used by ordinary distributed work. A `ResourceReservation` is also explicitly non-canonical and carries `authority="none"`.
 
 ## Founder deployment
 
@@ -97,6 +120,8 @@ Ordinary `WorkProposal` objects continue to work through the same service with n
 
 ## Current limits
 
-This seam does not reserve RAM or disk space. It verifies observed availability at placement time. Long-running workload accounting and resource reservations remain future work.
+Reservations are in-memory because the current distributed workload leases are also in-memory. Founder restart therefore does not pretend to preserve a lease or reservation that Runtime itself no longer owns.
+
+Reservations are admission-control budgets, not OS-level enforcement. Runtime does not create cgroups, allocate memory, preallocate disk files, or change filesystem quotas in this layer.
 
 Resource requirements are not a substitute for functional capabilities. For example, `library.retrieve` on a storage resource says that storage can satisfy that data-access requirement; `summarise-records` remains a functional node capability.
