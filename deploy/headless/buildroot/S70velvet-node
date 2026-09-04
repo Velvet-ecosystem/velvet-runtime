@@ -1,0 +1,61 @@
+#!/bin/sh
+
+DAEMON=/usr/bin/python3
+REPO=/opt/velvet/velvet-runtime
+CONFIG=/etc/velvet/node.json
+PIDFILE=/var/run/velvet-headless-node.pid
+NAME=velvet-headless-node
+
+start() {
+    printf 'Starting %s: ' "$NAME"
+    if [ ! -x "$DAEMON" ]; then
+        echo "missing python3"
+        return 1
+    fi
+    if [ ! -r "$CONFIG" ]; then
+        echo "missing $CONFIG"
+        return 1
+    fi
+    if [ ! -d "$REPO/services" ]; then
+        echo "missing $REPO"
+        return 1
+    fi
+    if ! id velvet >/dev/null 2>&1; then
+        echo "missing velvet service user"
+        return 1
+    fi
+    mkdir -p /var/lib/velvet-node /var/run
+    chown velvet:velvet /var/lib/velvet-node
+    cd "$REPO" || return 1
+    start-stop-daemon -S -b -m -p "$PIDFILE" -c velvet -x "$DAEMON" -- \
+        -m services.headless_node_supervisor --config "$CONFIG"
+    status=$?
+    [ "$status" -eq 0 ] && echo "OK" || echo "FAIL"
+    return "$status"
+}
+
+stop() {
+    printf 'Stopping %s: ' "$NAME"
+    start-stop-daemon -K -p "$PIDFILE" -R TERM/10/KILL/5
+    status=$?
+    rm -f "$PIDFILE"
+    [ "$status" -eq 0 ] && echo "OK" || echo "FAIL"
+    return "$status"
+}
+
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    restart|reload)
+        stop
+        start
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart}"
+        exit 1
+        ;;
+esac
