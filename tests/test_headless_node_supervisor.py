@@ -125,8 +125,14 @@ def test_systemd_unit_has_no_graphical_or_network_listener_dependency():
     assert "NoNewPrivileges=true" in text
 
 
-def test_buildroot_init_script_is_shell_syntax_valid():
-    script = ROOT / "deploy" / "headless" / "buildroot" / "S70velvet-node"
+@pytest.mark.parametrize(
+    "script",
+    [
+        ROOT / "deploy" / "headless" / "buildroot" / "S70velvet-node",
+        ROOT / "scripts" / "install_headless_node.sh",
+    ],
+)
+def test_headless_shell_scripts_are_syntax_valid(script):
     completed = subprocess.run(
         ["sh", "-n", str(script)],
         stdout=subprocess.PIPE,
