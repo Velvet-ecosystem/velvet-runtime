@@ -46,6 +46,13 @@ fi
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+EXPECTED_REPO=/opt/velvet/velvet-runtime
+if [ "$REPO_ROOT" != "$EXPECTED_REPO" ]; then
+    echo "headless systemd deployment expects the Runtime repository at $EXPECTED_REPO" >&2
+    echo "current repository is: $REPO_ROOT" >&2
+    exit 1
+fi
+
 UNIT="$REPO_ROOT/deploy/headless/systemd/velvet-headless-node.service"
 [ -r "$UNIT" ] || { echo "missing headless systemd unit" >&2; exit 1; }
 [ -r "$REPO_ROOT/services/headless_node_supervisor.py" ] || {
