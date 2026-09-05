@@ -97,6 +97,32 @@ class LibraryConversationProviderTests(unittest.TestCase):
         self.assertEqual(client.calls, [("pulley bolt torque", 5)])
         self.assertEqual(result["authority"], "none")
 
+    def test_provider_compacts_natural_library_question_before_retrieval(self):
+        client = FakeClient()
+        provider = RuntimeLibraryEvidenceProvider(client, limit=5)
+        question = "What are Velour Library's core principles?"
+
+        result = provider(question, 5)
+
+        self.assertEqual(client.calls, [("core principles", 5)])
+        self.assertEqual(result["query"], question)
+
+    def test_provider_compacts_technical_question_without_losing_terms(self):
+        client = FakeClient()
+        provider = RuntimeLibraryEvidenceProvider(client, limit=5)
+
+        provider("What torque should the pulley bolt use?", 5)
+
+        self.assertEqual(client.calls, [("torque pulley bolt", 5)])
+
+    def test_provider_keeps_context_name_when_it_is_the_only_search_term(self):
+        client = FakeClient()
+        provider = RuntimeLibraryEvidenceProvider(client, limit=5)
+
+        provider("Who is Velour?", 5)
+
+        self.assertEqual(client.calls, [("Velour", 5)])
+
     def test_remote_authority_or_mutated_receipt_posture_is_rejected(self):
         with self.assertRaisesRegex(LibraryConversationProviderError, "authority"):
             normalize_remote_library_evidence(
