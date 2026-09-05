@@ -34,17 +34,22 @@ class FakeGateway:
             requires_authority_check=False,
         )
         reply = SimpleNamespace(
-            text="Cabin temperature is 21.5 °C.",
+            text="According to Velour Library README, core principles are local first and preserve the source.",
             display=True,
             speak=False,
             generator="core-grounded-conversation",
+            source_refs=("library:item:readme", "library:chunk:core-principles"),
+            source_label="Velour Library README",
+            source_labels=(),
+            evidence_texts=("## Core principles - Local first. - Preserve the source.",),
+            qualifiers=("reference-only", "trust-class:primary"),
             authority_granted=False,
         )
         return SimpleNamespace(request=request, reply=reply)
 
 
 class ConversationUnixTransportTests(unittest.TestCase):
-    def test_dispatch_exposes_only_bounded_conversation_result(self):
+    def test_dispatch_exposes_bounded_reply_and_read_only_provenance(self):
         with tempfile.TemporaryDirectory() as raw_root:
             gateway = FakeGateway()
             server = ConversationUnixServer(
@@ -54,15 +59,25 @@ class ConversationUnixTransportTests(unittest.TestCase):
             )
             result = server._dispatch_conversation(
                 CONVERSATION_OPERATION,
-                {"text": "What is the cabin temperature?", "modality": "text"},
+                {"text": "What are the core principles?", "modality": "text"},
                 PeerCredentials(pid=1, uid=os.getuid(), gid=os.getgid()),
             )
 
-        self.assertEqual(result["text"], "Cabin temperature is 21.5 °C.")
+        self.assertIn("According to Velour Library README", result["text"])
+        self.assertEqual(result["source_label"], "Velour Library README")
+        self.assertEqual(
+            result["source_refs"],
+            ["library:item:readme", "library:chunk:core-principles"],
+        )
+        self.assertEqual(
+            result["evidence_texts"],
+            ["## Core principles - Local first. - Preserve the source."],
+        )
+        self.assertIn("reference-only", result["qualifiers"])
         self.assertFalse(result["authority_granted"])
         self.assertFalse(result["grants_execution"])
         self.assertFalse(result["grants_actuation"])
-        self.assertEqual(gateway.calls[0], ("What is the cabin temperature?", "text"))
+        self.assertEqual(gateway.calls[0], ("What are the core principles?", "text"))
 
     def test_dispatch_rejects_unknown_operation_and_modality(self):
         with tempfile.TemporaryDirectory() as raw_root:
@@ -98,6 +113,32 @@ class ConversationUnixTransportTests(unittest.TestCase):
         unsafe["grants_execution"] = True
         with self.assertRaisesRegex(ConversationTransportError, "grant execution"):
             _validate_client_result(unsafe)
+
+    def test_client_result_rejects_malformed_provenance(self):
+        safe = {
+            "conversation_id": "c",
+            "turn_id": "c:1",
+            "turn_number": 1,
+            "text": "According to Manual, use the verified value.",
+            "generator": "core-grounded-conversation",
+            "requires_authority_check": False,
+            "source_refs": ["library:item:manual"],
+            "source_label": "Manual",
+            "source_labels": [],
+            "evidence_texts": ["Use the verified value."],
+            "qualifiers": ["reference-only"],
+            "authority_granted": False,
+            "grants_execution": False,
+            "grants_actuation": False,
+        }
+        self.assertEqual(
+            _validate_client_result(safe)["source_refs"],
+            ["library:item:manual"],
+        )
+        bad = dict(safe)
+        bad["source_refs"] = "library:item:manual"
+        with self.assertRaisesRegex(ConversationTransportError, "source_refs must be a list"):
+            _validate_client_result(bad)
 
     def test_socket_service_is_explicitly_opt_in(self):
         with patch.dict(os.environ, {}, clear=False):

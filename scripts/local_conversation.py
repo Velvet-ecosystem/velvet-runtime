@@ -81,6 +81,7 @@ def main() -> int:
         print("Velvet> %s" % exchange.reply.text)
         if debug:
             request = exchange.request
+            reply = exchange.reply
             print(
                 "[turn %s | act=%s | strategy=%s | authority_check=%s | generator=%s]"
                 % (
@@ -88,9 +89,19 @@ def main() -> int:
                     request.act.value,
                     request.strategy.value,
                     request.requires_authority_check,
-                    exchange.reply.generator,
+                    reply.generator,
                 )
             )
+            source_refs = tuple(getattr(reply, "source_refs", ()))
+            evidence_texts = tuple(getattr(reply, "evidence_texts", ()))
+            source_label = getattr(reply, "source_label", None)
+            source_labels = tuple(getattr(reply, "source_labels", ()))
+            if source_refs or evidence_texts or source_label or source_labels:
+                display_source = source_label or ", ".join(source_labels) or "grounded source"
+                print(
+                    "[grounding | source=%s | refs=%s | exact_evidence=%s]"
+                    % (display_source, len(source_refs), len(evidence_texts))
+                )
 
     return 0
 
