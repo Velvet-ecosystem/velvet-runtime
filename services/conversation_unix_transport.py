@@ -24,6 +24,11 @@ from services.local_conversation import build_local_conversation_gateway
 DEFAULT_CONVERSATION_SOCKET_PATH = Path("/run/velvet/conversation.sock")
 CONVERSATION_OPERATION = "submit_turn"
 _ALLOWED_MODALITIES = frozenset({"text", "speech_transcript"})
+_MAX_SOURCE_REFS = 32
+_MAX_SOURCE_LABELS = 3
+_MAX_EVIDENCE_TEXTS = 3
+_MAX_QUALIFIERS = 32
+_MAX_PROVENANCE_TEXT_CHARACTERS = 1024
 
 
 class ConversationTransportError(UnixTransportError):
@@ -83,6 +88,11 @@ class ConversationUnixServer(UnixRpcServer):
             "speak": bool(reply.speak),
             "generator": str(reply.generator),
             "requires_authority_check": bool(request.requires_authority_check),
+            "source_refs": list(getattr(reply, "source_refs", ())),
+            "source_label": getattr(reply, "source_label", None),
+            "source_labels": list(getattr(reply, "source_labels", ())),
+            "evidence_texts": list(getattr(reply, "evidence_texts", ())),
+            "qualifiers": list(getattr(reply, "qualifiers", ())),
             "authority_granted": False,
             "grants_execution": False,
             "grants_actuation": False,
@@ -173,4 +183,32 @@ def _validate_client_result(result: Mapping[str, Any]) -> Mapping[str, Any]:
         raise ConversationTransportError("conversation response attempted to grant actuation")
     if not isinstance(result.get("requires_authority_check"), bool):
         raise ConversationTransportError("conversation authority-check flag is invalid")
+
+    _validate_optional_text_list(result, "source_refs", _MAX_SOURCE_REFS)
+    _validate_optional_text_list(result, "source_labels", _MAX_SOURCE_LABELS)
+    _validate_optional_text_list(result, "evidence_texts", _MAX_EVIDENCE_TEXTS)
+    _validate_optional_text_list(result, "qualifiers", _MAX_QUALIFIERS)
+    source_label = result.get("source_label")
+    if source_label is not None:
+        if not isinstance(source_label, str) or not source_label.strip():
+            raise ConversationTransportError("conversation source_label is invalid")
+        if len(source_label) > _MAX_PROVENANCE_TEXT_CHARACTERS:
+            raise ConversationTransportError("conversation source_label exceeds bound")
     return dict(result)
+
+
+def _validate_optional_text_list(
+    result: Mapping[str, Any],
+    key: str,
+    maximum_items: int,
+) -> None:
+    value = result.get(key, [])
+    if not isinstance(value, list):
+        raise ConversationTransportError("conversation %s must be a list" % key)
+    if len(value) > maximum_items:
+        raise ConversationTransportError("conversation %s exceeds item bound" % key)
+    for item in value:
+        if not isinstance(item, str) or not item.strip():
+            raise ConversationTransportError("conversation %s entry is invalid" % key)
+        if len(item) > _MAX_PROVENANCE_TEXT_CHARACTERS:
+            raise ConversationTransportError("conversation %s entry exceeds bound" % key)
