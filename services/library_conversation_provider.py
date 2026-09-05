@@ -9,6 +9,7 @@ Velour node on the private LAN; only the configured URL changes.
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional
 
@@ -16,6 +17,81 @@ RUNTIME_LIBRARY_EVIDENCE_SCHEMA = "velvet.runtime.library_evidence.v1"
 REMOTE_LIBRARY_EVIDENCE_SCHEMA = "velours.library.remote-evidence.v1"
 MAX_LIBRARY_RESULTS = 20
 MAX_LIBRARY_QUERY_CHARACTERS = 512
+
+_RETRIEVAL_WORD_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*")
+_RETRIEVAL_STOPWORDS = frozenset(
+    {
+        "a",
+        "about",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "be",
+        "been",
+        "being",
+        "by",
+        "can",
+        "could",
+        "did",
+        "do",
+        "does",
+        "explain",
+        "find",
+        "for",
+        "from",
+        "give",
+        "had",
+        "has",
+        "have",
+        "how",
+        "i",
+        "in",
+        "into",
+        "is",
+        "it",
+        "its",
+        "look",
+        "may",
+        "me",
+        "my",
+        "of",
+        "on",
+        "or",
+        "our",
+        "please",
+        "s",
+        "said",
+        "say",
+        "says",
+        "should",
+        "show",
+        "tell",
+        "that",
+        "the",
+        "this",
+        "to",
+        "use",
+        "used",
+        "using",
+        "was",
+        "we",
+        "were",
+        "what",
+        "when",
+        "where",
+        "which",
+        "who",
+        "why",
+        "will",
+        "with",
+        "would",
+        "you",
+        "your",
+    }
+)
+_RETRIEVAL_CONTEXT_WORDS = frozenset({"velour", "velours", "library"})
 
 
 class LibraryConversationProviderError(RuntimeError):
@@ -42,12 +118,39 @@ class RuntimeLibraryEvidenceProvider:
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= MAX_LIBRARY_RESULTS:
             raise ValueError("library result limit is outside supported bounds")
         bounded_limit = min(limit, self._limit)
+        retrieval_query = _compact_retrieval_query(query)
 
         try:
-            response = self._client.evidence(query, bounded_limit)
+            response = self._client.evidence(retrieval_query, bounded_limit)
         except Exception as exc:
             raise LibraryConversationProviderError("Velour Library retrieval failed: %s" % exc) from exc
         return normalize_remote_library_evidence(response, query=query)
+
+
+def _compact_retrieval_query(query: str) -> str:
+    """Deterministically remove conversational scaffolding before retrieval.
+
+    The original owner question remains the Runtime/Core query of record. Only
+    the text sent to Velour's read-only retrieval endpoint is compacted. This
+    helper removes common question/filler words and, when another content term
+    remains, the local seam labels ``Velour`` and ``Library``. It does not infer
+    synonyms, add facts, change trust, or grant authority.
+    """
+
+    tokens = _RETRIEVAL_WORD_RE.findall(query)
+    content = [
+        token
+        for token in tokens
+        if token.casefold() not in _RETRIEVAL_STOPWORDS
+    ]
+    without_context = [
+        token
+        for token in content
+        if token.casefold() not in _RETRIEVAL_CONTEXT_WORDS
+    ]
+    selected = without_context or content
+    compact = " ".join(selected).strip()
+    return compact or query
 
 
 def normalize_remote_library_evidence(
