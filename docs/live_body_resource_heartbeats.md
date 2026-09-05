@@ -33,9 +33,9 @@ By default the probe observes:
 - only explicitly configured storage paths through `os.statvfs()`;
 - explicitly configured extra resources such as a reviewed accelerator.
 
-A configured filesystem that disappears is omitted from the next heartbeat instead of being remembered as fictional capacity.
+A configured storage target that disappears is omitted from the next heartbeat instead of being remembered as fictional capacity.
 
-Example for the current external Library drive:
+Example for the current 1 TB Velvet vault:
 
 ```json
 "resources": {
@@ -44,16 +44,23 @@ Example for the current external Library drive:
   "socket_path": "/run/velvet/body-resources.sock",
   "storage_paths": [
     {
-      "resource_id": "storage.library-1tb",
-      "path": "/mnt/velvet-library",
+      "resource_id": "storage.vault-1tb",
+      "path": "/srv/velvet/.velvet-vault.json",
       "scope": "attached",
-      "capabilities": ["library.archive"]
+      "capabilities": [
+        "vault.storage",
+        "library.archive",
+        "receipts.archive",
+        "media.archive"
+      ]
     }
   ]
 }
 ```
 
-The mount path above is an example deployment path. Use the real mount point on Founder.
+`/srv/velvet` is the shared deployment convention for the mounted vault. Runtime probes the vault manifest inside that filesystem rather than the bare mountpoint. `os.statvfs()` reports the same filesystem capacity for the manifest file, but if the vault is unmounted the manifest disappears and the probe omits `storage.vault-1tb` instead of accidentally advertising the underlying Founder filesystem.
+
+The manifest is only a presence sentinel for resource observation. It does not make the mounted bytes trusted, authorize filesystem access, or grant storage authority.
 
 ## Specialist / Lyra
 
@@ -77,19 +84,20 @@ On graceful specialist shutdown the wrapper publishes an empty resource view imm
 
 This matters for abrupt power loss where a specialist cannot publish its graceful empty view.
 
-## Moving the Library drive
+## Moving the vault drive
 
 The resource topology can change without a board-specific rule:
 
 ```text
 Founder heartbeat
-  storage.library-1tb -> attached, online
+  storage.vault-1tb -> attached, online
 
 remove drive
-  next Founder heartbeat omits storage.library-1tb
+  /srv/velvet/.velvet-vault.json disappears
+  next Founder heartbeat omits storage.vault-1tb
 
-attach drive to Velour
-  Velour heartbeat advertises storage.library-1tb
+attach and initialize/mount drive on Velour at /srv/velvet
+  Velour heartbeat advertises storage.vault-1tb
 ```
 
 The storage remains attributed to whichever organ actually hosts it. Founder may use Velour's Library service without pretending the disk is locally attached to Founder.
@@ -134,7 +142,7 @@ More resources can make a body eligible for more work later. They never create p
 
 ## Next seam
 
-The live body now has truthful capacity data. The next placement contract can add explicit resource requirements to selected work proposals, for example:
+The live body now has truthful capacity data. Selected work proposals can add explicit resource requirements, for example:
 
 ```text
 library-index work
@@ -142,4 +150,4 @@ library-index work
   requires storage resource capability library.archive
 ```
 
-Only then should the production placement path use resource capacity to accept or reject hosts. This keeps resource-aware placement real rather than decorative.
+Resource-aware placement can then accept or reject hosts against the live body rather than a fixed hardware assumption.

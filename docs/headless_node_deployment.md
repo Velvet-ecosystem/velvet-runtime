@@ -53,9 +53,9 @@ Copy the reviewed deployment-specific version to:
 /etc/velvet/node.json
 ```
 
-The example declares `/mnt/velvet-library` as attached storage. That path is intentionally only an example. Velvet does not scan arbitrary mounts and claim them as body storage.
+The shared vault convention is `/srv/velvet`. Velvet still does not scan arbitrary mounts and claim them as body storage; the path must be explicitly configured on the organ that actually hosts the drive.
 
-If the 1 TB Library drive is attached to Founder today, Founder advertises it. If it is later physically moved to Velour, Velour's node config declares the mount and Velour advertises it instead.
+If the 1 TB vault is attached to Founder today, Founder advertises it. If it is later physically moved to Velour and mounted at `/srv/velvet`, Velour's node config declares the mount and Velour advertises it instead.
 
 ## systemd hosts
 
