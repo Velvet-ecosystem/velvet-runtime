@@ -85,8 +85,49 @@ class LibraryConversationProviderTests(unittest.TestCase):
         self.assertTrue(normalized["reference_only"])
         self.assertEqual(normalized["authority"], "none")
         self.assertEqual(normalized["results"][0]["chunk_id"], "chk_123")
+        self.assertEqual(normalized["results"][0]["chunk_ids"], ["chk_123"])
+        self.assertFalse(normalized["results"][0]["windowed"])
         self.assertNotIn("source_uri", normalized["results"][0])
         self.assertNotIn("location", normalized["results"][0])
+
+    def test_preserves_bounded_same_source_window_metadata(self):
+        response = remote_response()
+        item = response["evidence"]["results"][0]
+        item["chunk_ids"] = ["chk_123", "chk_124"]
+        item["windowed"] = True
+        item["window_truncated"] = False
+        item["snippet"] = (
+            "## Core principles\n- Local first.\n- Preserve the source.\n"
+            "- Currency is metadata, not truth."
+        )
+
+        normalized = normalize_remote_library_evidence(response, query="core principles")
+        result = normalized["results"][0]
+        self.assertEqual(result["chunk_ids"], ["chk_123", "chk_124"])
+        self.assertTrue(result["windowed"])
+        self.assertFalse(result["window_truncated"])
+        self.assertIn("Currency is metadata, not truth", result["snippet"])
+
+    def test_rejects_malformed_or_unbounded_window_metadata(self):
+        response = remote_response()
+        item = response["evidence"]["results"][0]
+        item["chunk_ids"] = ["chk_123", "chk_124", "chk_125", "chk_126"]
+        item["windowed"] = True
+        with self.assertRaisesRegex(LibraryConversationProviderError, "chunk_ids exceed"):
+            normalize_remote_library_evidence(response, query="question")
+
+        response = remote_response()
+        item = response["evidence"]["results"][0]
+        item["chunk_ids"] = ["chk_other"]
+        item["windowed"] = True
+        with self.assertRaisesRegex(LibraryConversationProviderError, "seed chunk"):
+            normalize_remote_library_evidence(response, query="question")
+
+        response = remote_response()
+        item = response["evidence"]["results"][0]
+        item["window_truncated"] = True
+        with self.assertRaisesRegex(LibraryConversationProviderError, "must be windowed"):
+            normalize_remote_library_evidence(response, query="question")
 
     def test_provider_calls_only_read_only_evidence_endpoint(self):
         client = FakeClient()

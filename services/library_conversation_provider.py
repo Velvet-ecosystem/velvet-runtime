@@ -17,6 +17,7 @@ RUNTIME_LIBRARY_EVIDENCE_SCHEMA = "velvet.runtime.library_evidence.v1"
 REMOTE_LIBRARY_EVIDENCE_SCHEMA = "velours.library.remote-evidence.v1"
 MAX_LIBRARY_RESULTS = 20
 MAX_LIBRARY_QUERY_CHARACTERS = 512
+MAX_LIBRARY_WINDOW_CHUNKS = 3
 
 _RETRIEVAL_WORD_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*")
 _RETRIEVAL_STOPWORDS = frozenset(
@@ -188,10 +189,26 @@ def normalize_remote_library_evidence(
     for item in results:
         if not isinstance(item, Mapping):
             raise LibraryConversationProviderError("Velour Library result must be a mapping")
+        chunk_id = item.get("chunk_id")
+        chunk_ids = _normalize_chunk_ids(item.get("chunk_ids"), chunk_id=chunk_id)
+        windowed = item.get("windowed", False)
+        window_truncated = item.get("window_truncated", False)
+        if not isinstance(windowed, bool):
+            raise LibraryConversationProviderError("Velour Library windowed flag must be boolean")
+        if not isinstance(window_truncated, bool):
+            raise LibraryConversationProviderError("Velour Library window_truncated flag must be boolean")
+        if windowed and not chunk_ids:
+            raise LibraryConversationProviderError("Velour Library evidence window requires chunk_ids")
+        if window_truncated and not windowed:
+            raise LibraryConversationProviderError("truncated Library evidence must be windowed")
+
         normalized.append(
             {
                 "item_id": item.get("item_id"),
-                "chunk_id": item.get("chunk_id"),
+                "chunk_id": chunk_id,
+                "chunk_ids": chunk_ids,
+                "windowed": windowed,
+                "window_truncated": window_truncated,
                 "title": item.get("title"),
                 "source": item.get("source"),
                 "trust_class": item.get("trust_class"),
@@ -212,6 +229,30 @@ def normalize_remote_library_evidence(
         "authority": "none",
         "results": normalized,
     }
+
+
+def _normalize_chunk_ids(value: Any, *, chunk_id: Any) -> list[str]:
+    """Validate the bounded set of canonical chunk identities for one result."""
+
+    if value is None:
+        if isinstance(chunk_id, str) and chunk_id.strip():
+            return [chunk_id.strip()]
+        return []
+    if not isinstance(value, list):
+        raise LibraryConversationProviderError("Velour Library chunk_ids must be a list")
+    if len(value) > MAX_LIBRARY_WINDOW_CHUNKS:
+        raise LibraryConversationProviderError("Velour Library chunk_ids exceed Runtime bound")
+
+    clean = []
+    for entry in value:
+        if not isinstance(entry, str) or not entry.strip():
+            raise LibraryConversationProviderError("Velour Library chunk_ids entry is invalid")
+        candidate = entry.strip()
+        if candidate not in clean:
+            clean.append(candidate)
+    if isinstance(chunk_id, str) and chunk_id.strip() and chunk_id.strip() not in clean:
+        raise LibraryConversationProviderError("Velour Library seed chunk is absent from chunk_ids")
+    return clean
 
 
 def configured_library_evidence_provider(
