@@ -59,6 +59,7 @@ class DevStateBootstrapTests(unittest.TestCase):
                 capability["policies"][0]["proposed_capabilities"],
                 ["observe.telemetry"],
             )
+            self.assertEqual(capability["policies"][0]["court_authority"], "guest")
             self.assertEqual(
                 court["policies"][0]["allowed_capabilities"],
                 ["observe.telemetry"],
