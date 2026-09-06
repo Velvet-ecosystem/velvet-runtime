@@ -66,8 +66,16 @@ cannot be bypassed is a first-class contribution.
 Run the full suite before submitting:
 
 ```bash
-python3 -m unittest discover -s tests -v
+python3 -m pip install 'pytest>=7.4,<8.4'
+python3 -m pytest tests -q -ra
 ```
+
+Pytest is the supported complete-suite runner because the suite contains both
+`TestCase` methods and module-level functions. `unittest discover` alone omits
+the latter. CI preserves the Python 3.8 baseline-contract lane and runs the
+complete suite on Python 3.10, 3.11, and 3.12. It prints the executed result/count
+and retains logs and JUnit XML on success and failure. Promotion evidence names
+the actual runner and command without changing its authority assertions.
 
 The complete test suite must pass. New tests must not suppress, weaken,
 or work around existing enforcement assertions.

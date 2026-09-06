@@ -435,10 +435,15 @@ The current Python boundary provides interface hygiene, not a malicious-code san
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -v
+python3 -m pip install 'pytest>=7.4,<8.4'
+python3 -m pytest tests -q -ra
 ```
 
 Runtime CI enforces a Python 3.8 baseline-contract lane and full test lanes on Python 3.10, 3.11, and 3.12.
+
+The full lanes use pytest to execute both `TestCase` methods and module-level
+tests, print the result/count, and retain logs and JUnit XML for every outcome.
+The existing Python 3.8 syntax and dependency-contract checks remain intact.
 
 ## Cleanup Rhythm
 
