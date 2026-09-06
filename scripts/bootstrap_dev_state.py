@@ -100,6 +100,7 @@ def main() -> int:
             "policies": [{
                 "policy_id": "development-observation",
                 "authority_profile": "development-read-only",
+                "court_authority": "guest",
                 "status": "active",
                 "proposed_capabilities": ["observe.telemetry"],
             }],
