@@ -23,6 +23,7 @@
         "resource_id": "storage.vault-1tb",
         "path": "/srv/velvet/.velvet-vault.json",
         "scope": "attached",
+        "expected_filesystem_uuid": null,
         "capabilities": [
           "vault.storage",
           "library.archive",

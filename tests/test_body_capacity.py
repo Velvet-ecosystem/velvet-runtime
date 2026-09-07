@@ -3,6 +3,9 @@
 from pathlib import Path
 from types import SimpleNamespace
 
+from services import filesystem_identity
+from tests.filesystem_fixture import FilesystemFixture, UUID
+
 from services.body_capacity import (
     LinuxResourceProbe,
     NodeResourceAdvertisement,
@@ -81,7 +84,7 @@ def work():
     )
 
 
-def test_linux_probe_reports_ram_cpu_and_configured_attached_storage():
+def test_linux_probe_reports_ram_cpu_and_configured_attached_storage(tmp_path):
     meminfo = "MemTotal:        8000000 kB\nMemAvailable:    3000000 kB\n"
     stats = SimpleNamespace(
         f_frsize=4096,
@@ -95,9 +98,10 @@ def test_linux_probe_reports_ram_cpu_and_configured_attached_storage():
         storage_paths=(
             StoragePathSpec(
                 resource_id="storage.library-1tb",
-                path=Path("/mnt/velvet-library"),
+                path=tmp_path,
                 scope=ResourceScope.ATTACHED,
                 capabilities=("library.archive",),
+                expected_filesystem_uuid=UUID,
             ),
         ),
         meminfo_reader=lambda: meminfo,
@@ -105,7 +109,8 @@ def test_linux_probe_reports_ram_cpu_and_configured_attached_storage():
         statvfs_provider=lambda path: stats,
     )
 
-    result = probe.probe(now=12.0)
+    with FilesystemFixture(filesystem_identity, tmp_path):
+        result = probe.probe(now=12.0)
 
     kinds = {item.kind for item in result.resources}
     assert kinds == {ResourceKind.MEMORY, ResourceKind.COMPUTE, ResourceKind.STORAGE}
@@ -117,7 +122,7 @@ def test_linux_probe_reports_ram_cpu_and_configured_attached_storage():
     assert "library.archive" in drive.capabilities
 
 
-def test_missing_attached_drive_disappears_from_next_probe_instead_of_being_assumed():
+def test_missing_attached_drive_disappears_from_next_probe_instead_of_being_assumed(tmp_path):
     calls = {"mounted": True}
 
     def statvfs(path):
@@ -133,15 +138,16 @@ def test_missing_attached_drive_disappears_from_next_probe_instead_of_being_assu
     probe = LinuxResourceProbe(
         node_id="founder",
         body_id=BODY_ID,
-        storage_paths=(StoragePathSpec("storage.library", Path("/mnt/library")),),
+        storage_paths=(StoragePathSpec("storage.library", tmp_path, expected_filesystem_uuid=UUID),),
         meminfo_reader=lambda: "MemTotal: 1000 kB\nMemAvailable: 500 kB\n",
         cpu_count_provider=lambda: 2,
         statvfs_provider=statvfs,
     )
 
-    present = probe.probe(now=1.0)
-    calls["mounted"] = False
-    absent = probe.probe(now=2.0)
+    with FilesystemFixture(filesystem_identity, tmp_path):
+        present = probe.probe(now=1.0)
+        calls["mounted"] = False
+        absent = probe.probe(now=2.0)
 
     assert any(item.kind is ResourceKind.STORAGE for item in present.resources)
     assert not any(item.kind is ResourceKind.STORAGE for item in absent.resources)
