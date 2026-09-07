@@ -47,6 +47,7 @@ Example for the current 1 TB Velvet vault:
       "resource_id": "storage.vault-1tb",
       "path": "/srv/velvet/.velvet-vault.json",
       "scope": "attached",
+      "expected_filesystem_uuid": null,
       "capabilities": [
         "vault.storage",
         "library.archive",
@@ -58,7 +59,7 @@ Example for the current 1 TB Velvet vault:
 }
 ```
 
-`/srv/velvet` is the shared deployment convention for the mounted vault. Runtime probes the vault manifest inside that filesystem rather than the bare mountpoint. `os.statvfs()` reports the same filesystem capacity for the manifest file, but if the vault is unmounted the manifest disappears and the probe omits `storage.vault-1tb` instead of accidentally advertising the underlying Founder filesystem.
+`/srv/velvet` is the shared deployment convention for the mounted vault. Runtime verifies that the configured path belongs to `expected_filesystem_uuid` before advertising capacity. The `null` example is deliberately unavailable until configured locally. A surviving directory, copied marker, wrong filesystem, duplicate UUID or unverifiable identity cannot establish availability. See [removable vault identity](removable_vault_identity.md) for configuration and subdirectory/bind-mount support.
 
 The manifest is only a presence sentinel for resource observation. It does not make the mounted bytes trusted, authorize filesystem access, or grant storage authority.
 

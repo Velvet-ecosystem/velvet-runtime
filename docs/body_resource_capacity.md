@@ -38,7 +38,7 @@ It can observe:
 - configured filesystems with `os.statvfs()`;
 - explicitly declared extra resources such as reviewed accelerators.
 
-Filesystem paths are configured rather than blindly enumerated. This keeps removable and dedicated Velvet storage explicit.
+Filesystem paths are configured rather than blindly enumerated. Attached paths additionally require an explicit `expected_filesystem_uuid`; legacy path-only entries remain parseable but unavailable. See [removable vault identity](removable_vault_identity.md) for verification and local configuration preparation.
 
 The probe is expected to run repeatedly. If a configured attached filesystem disappears, the next advertisement omits it instead of preserving a fictional capacity.
 

@@ -195,6 +195,7 @@ def _storage_specs(value: Any) -> Tuple[StoragePathSpec, ...]:
                 resource_id=resource_id,
                 path=path,
                 scope=scope,
+                expected_filesystem_uuid=item.get("expected_filesystem_uuid"),
                 capabilities=_normalized_tuple(
                     item.get("capabilities", ()), "storage capabilities"
                 ),
