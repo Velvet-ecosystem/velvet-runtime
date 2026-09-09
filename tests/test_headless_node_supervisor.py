@@ -4,6 +4,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from services import filesystem_identity
+from tests.filesystem_fixture import FilesystemFixture, UUID
+
 from services.headless_node_supervisor import (
     HEADLESS_STATUS_SCHEMA,
     HeadlessNodeConfig,
@@ -30,6 +33,7 @@ def mapping(root, storage_path):
                 "resource_id": "storage.library",
                 "path": str(storage_path),
                 "scope": "attached",
+                "expected_filesystem_uuid": UUID,
                 "capabilities": ["library.archive", "library.retrieve"],
             }
         ],
@@ -58,7 +62,8 @@ class HeadlessNodeSupervisorTests(unittest.TestCase):
             storage.mkdir()
             config_path = write_config(root, mapping(root, storage))
             config = HeadlessNodeConfig.load(config_path.resolve())
-            snapshot = HeadlessNodeSupervisor(config).observe_once(now=123.0)
+            with FilesystemFixture(filesystem_identity, storage):
+                snapshot = HeadlessNodeSupervisor(config).observe_once(now=123.0)
 
             self.assertEqual(snapshot["schema"], HEADLESS_STATUS_SCHEMA)
             self.assertEqual(snapshot["node_id"], "velour-lyra-1")

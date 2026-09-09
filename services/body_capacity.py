@@ -17,6 +17,8 @@ from pathlib import Path
 from threading import RLock
 from typing import Callable, Dict, Iterable, Mapping, Optional, Sequence, Tuple
 
+from services.filesystem_identity import verified_filesystem
+
 from services.distributed_work_coordinator import (
     DistributedWorkCoordinator,
     NodeAdvertisement,
@@ -247,6 +249,7 @@ class StoragePathSpec:
     path: Path
     scope: ResourceScope = ResourceScope.ATTACHED
     capabilities: Tuple[str, ...] = ()
+    expected_filesystem_uuid: Optional[str] = None
 
     def __post_init__(self) -> None:
         _require_text("resource_id", self.resource_id)
@@ -255,6 +258,8 @@ class StoragePathSpec:
         if not isinstance(self.scope, ResourceScope):
             raise TypeError("scope must be ResourceScope")
         _require_text_tuple("capabilities", self.capabilities)
+        if self.expected_filesystem_uuid is not None and not isinstance(self.expected_filesystem_uuid, str):
+            raise ValueError("expected_filesystem_uuid must be a string or null")
 
 
 class LinuxResourceProbe:
@@ -303,7 +308,11 @@ class LinuxResourceProbe:
             storage = self._probe_storage(spec)
             if storage is not None:
                 found.append(storage)
-        found.extend(item for item in self.extra_resources if item.online)
+        # Static extra-resource declarations carry no filesystem binding. They
+        # cannot bypass the attached-storage UUID requirement.
+        found.extend(item for item in self.extra_resources if item.online and not (
+            item.kind is ResourceKind.STORAGE and item.scope is ResourceScope.ATTACHED
+        ))
         return NodeResourceAdvertisement(
             node_id=self.node_id,
             body_id=self.body_id,
@@ -353,7 +362,11 @@ class LinuxResourceProbe:
 
     def _probe_storage(self, spec: StoragePathSpec) -> Optional[ResourceAdvertisement]:
         try:
-            stats = self._statvfs_provider(str(spec.path))
+            if spec.scope is ResourceScope.ATTACHED or spec.expected_filesystem_uuid is not None:
+                with verified_filesystem(spec.path, spec.expected_filesystem_uuid) as binding:
+                    stats = self._statvfs_provider(str(binding.held_path))
+            else:
+                stats = self._statvfs_provider(str(spec.path))
             block_size = stats.f_frsize or stats.f_bsize
             capacity = float(block_size * stats.f_blocks)
             available = float(block_size * stats.f_bavail)
