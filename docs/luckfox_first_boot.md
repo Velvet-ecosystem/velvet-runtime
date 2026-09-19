@@ -98,6 +98,8 @@ ssh <FACTORY-USER>@<NODE-IP> 'sh -s audit' \
 
 Keep that audit as first-wake evidence. When the second Lyra is eventually powered for the first time, capture a separate audit for it rather than assuming both units shipped identically.
 
+Some Buildroot Lyra images boot with an unset wall clock near the Unix epoch. The bootstrap therefore treats a pre-2020 wall clock as implausible. In that case audit output records `captured_utc=unknown` and `wall_clock_plausible=false` rather than manufacturing a misleading 1970 timestamp. A plausible clock is still not proof that NTP or another trusted time source has synchronized it.
+
 ## 5. Prepare SSH-key access
 
 If the Founder does not already have an operator SSH key, create one interactively on the Founder:
@@ -164,6 +166,17 @@ physical_authority=none
 package_upgrade_performed=false
 firmware_reflash_performed=false
 ```
+
+If the wall clock is still implausible, the receipt records:
+
+```text
+applied_utc=unknown
+wall_clock_plausible=false
+```
+
+rather than preserving a false epoch-derived date. The bootstrap does not attempt to configure networking or time synchronization itself.
+
+The first-boot receipt is write-once evidence. If `first_boot_baseline.txt` already exists, apply mode refuses to overwrite it. Investigate the existing receipt instead of erasing first-wake history.
 
 ## 7. Reboot verification
 
