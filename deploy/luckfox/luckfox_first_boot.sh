@@ -57,6 +57,37 @@ safe_name() {
     esac
 }
 
+wall_clock_epoch_seconds() {
+    value="$(date -u '+%s' 2>/dev/null || true)"
+    case "$value" in
+        ''|*[!0-9]*) printf '%s\n' 0 ;;
+        *) printf '%s\n' "$value" ;;
+    esac
+}
+
+wall_clock_is_plausible() {
+    epoch="$(wall_clock_epoch_seconds)"
+    # 2020-01-01T00:00:00Z. This catches unset/epoch clocks without claiming
+    # that a merely plausible wall clock is synchronized or authoritative.
+    [ "$epoch" -ge 1577836800 ] 2>/dev/null
+}
+
+utc_timestamp_or_unknown() {
+    if wall_clock_is_plausible; then
+        date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || printf '%s\n' unknown
+    else
+        printf '%s\n' unknown
+    fi
+}
+
+wall_clock_plausible_value() {
+    if wall_clock_is_plausible; then
+        printf '%s\n' true
+    else
+        printf '%s\n' false
+    fi
+}
+
 print_file_if_readable() {
     label="$1"
     path="$2"
@@ -82,7 +113,8 @@ run_if_present() {
 
 audit() {
     printf '%s\n' 'VELVET_LUCKFOX_FACTORY_AUDIT_V1'
-    printf 'captured_utc=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || printf unknown)"
+    printf 'captured_utc=%s\n' "$(utc_timestamp_or_unknown)"
+    printf 'wall_clock_plausible=%s\n' "$(wall_clock_plausible_value)"
     printf 'hostname=%s\n' "$(hostname 2>/dev/null || printf unknown)"
     printf 'uid=%s\n' "$(id -u 2>/dev/null || printf unknown)"
     printf 'uname=%s\n' "$(uname -a 2>/dev/null || printf unknown)"
@@ -171,6 +203,9 @@ apply_baseline() {
         fatal "--authorized-key-file requires --operator-user"
     fi
 
+    receipt="$STATE_ROOT/bootstrap/first_boot_baseline.txt"
+    [ ! -e "$receipt" ] || fatal "bootstrap receipt already exists: $receipt; refusing to overwrite first-boot evidence"
+
     set_node_hostname "$NODE_NAME"
 
     mkdir -p /opt/velvet /opt/velvet/runtime
@@ -182,11 +217,11 @@ apply_baseline() {
         ensure_operator_key "$OPERATOR_USER" "$AUTHORIZED_KEY_FILE"
     fi
 
-    receipt="$STATE_ROOT/bootstrap/first_boot_baseline.txt"
     umask 027
     {
         printf '%s\n' 'VELVET_LUCKFOX_FIRST_BOOT_BASELINE_V1'
-        printf 'applied_utc=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || printf unknown)"
+        printf 'applied_utc=%s\n' "$(utc_timestamp_or_unknown)"
+        printf 'wall_clock_plausible=%s\n' "$(wall_clock_plausible_value)"
         printf 'hostname=%s\n' "$NODE_NAME"
         printf 'kernel=%s\n' "$(uname -sr 2>/dev/null || printf unknown)"
         printf 'architecture=%s\n' "$(uname -m 2>/dev/null || printf unknown)"
@@ -203,6 +238,9 @@ apply_baseline() {
     printf 'Velvet node baseline applied.\n'
     printf 'hostname: %s\n' "$NODE_NAME"
     printf 'receipt: %s\n' "$receipt"
+    if ! wall_clock_is_plausible; then
+        printf '%s\n' 'warning: wall clock is not plausible; receipt timestamp recorded as unknown.' >&2
+    fi
     printf '%s\n' 'role remains unassigned; Runtime and physical authority remain absent.'
 }
 
