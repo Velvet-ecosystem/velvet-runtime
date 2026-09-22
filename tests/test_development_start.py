@@ -80,6 +80,44 @@ class DevelopmentStartTests(unittest.TestCase):
             self.assertEqual(result, 0)
             runtime.assert_called_once_with()
 
+    def test_dev_start_defaults_conversation_socket_beside_env(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env_path = write_env(root)
+            runtime = MagicMock()
+            with patch.dict(os.environ, {}, clear=True):
+                result = start_development_runtime(
+                    env_path=env_path,
+                    preflight=lambda: SimpleNamespace(ready=True),
+                    runtime_entrypoint=runtime,
+                )
+                self.assertEqual(
+                    os.environ["VELVET_CONVERSATION_SOCKET_PATH"],
+                    str(root.resolve() / "run" / "conversation.sock"),
+                )
+                self.assertTrue((root / "run").is_dir())
+            self.assertEqual(result, 0)
+
+    def test_dev_start_preserves_explicit_conversation_socket_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env_path = write_env(root)
+            runtime = MagicMock()
+            explicit = str(root / "chosen.sock")
+            with patch.dict(
+                os.environ,
+                {"VELVET_CONVERSATION_SOCKET_PATH": explicit},
+                clear=True,
+            ):
+                result = start_development_runtime(
+                    env_path=env_path,
+                    preflight=lambda: SimpleNamespace(ready=True),
+                    runtime_entrypoint=runtime,
+                )
+                self.assertEqual(os.environ["VELVET_CONVERSATION_SOCKET_PATH"], explicit)
+                self.assertFalse((root / "run").exists())
+            self.assertEqual(result, 0)
+
 
 if __name__ == "__main__":
     unittest.main()
