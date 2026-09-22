@@ -6,7 +6,13 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
-PYTHON_BIN="${VELVET_DEV_PYTHON:-python3}"
+if [[ -n "${VELVET_DEV_PYTHON:-}" ]]; then
+  PYTHON_BIN="${VELVET_DEV_PYTHON}"
+elif [[ -x "${REPO_ROOT}/.venv/bin/python" ]]; then
+  PYTHON_BIN="${REPO_ROOT}/.venv/bin/python"
+else
+  PYTHON_BIN="python3"
+fi
 ENV_FILE="${VELVET_DEV_ENV_FILE:-${REPO_ROOT}/.velvet-dev/env.sh}"
 CHECK_ONLY=false
 
@@ -54,5 +60,6 @@ fi
 # optional transports cannot drift from systemd or direct CLI startup.
 export VELVET_DEV_ENV_FILE="${ENV_FILE}"
 echo "[VELVET DEV] Starting Velvet Runtime through the maintained dev-start doorway."
+echo "[VELVET DEV] Python: ${PYTHON_BIN}"
 echo "[VELVET DEV] Press Ctrl+C for a clean shutdown."
 exec "${PYTHON_BIN}" "${REPO_ROOT}/velvet_cli.py" dev-start
