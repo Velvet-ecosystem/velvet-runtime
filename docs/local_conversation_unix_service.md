@@ -24,13 +24,15 @@ The service reuses Runtime's existing authenticated, length-prefixed canonical J
 
 ## Enable
 
-The service is disabled by default.
+Outside the maintained development launcher, the service is disabled by default.
 
 ```bash
 export VELVET_CONVERSATION_SOCKET_ENABLED=true
 ```
 
-Default socket:
+`velvet_cli.py dev-start` enables the authority-free local conversation service when the variable is absent, while preserving an explicit `false` operator setting. Development startup also defaults the socket to the repo-local `.velvet-dev/run/conversation.sock` so it does not require systemd to create `/run/velvet`.
+
+Deployed/default socket:
 
 ```text
 /run/velvet/conversation.sock
@@ -81,4 +83,4 @@ The socket never exposes Court tokens, executor handles, the raw event bus, body
 
 ## Client
 
-`UnixConversationClient` is the narrow local client adapter intended for Founder and other trusted local surfaces. A UI can call `submit(text)` without learning how Core, Language, or body-state storage are composed behind Runtime.
+`UnixConversationClient` is the narrow local client adapter intended for Runtime-side callers. Founder Interface uses its own narrow `UnixConversationBridge` against the same wire contract so Interface does not import Runtime internals.
