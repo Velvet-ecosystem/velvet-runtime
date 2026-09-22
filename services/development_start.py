@@ -52,8 +52,20 @@ def load_development_environment(env_path: Union[str, Path]) -> Dict[str, str]:
     return values
 
 
-def _prepare_development_conversation_socket(env_path: Union[str, Path]) -> None:
-    """Give dev-start a writable socket path without changing deployed defaults."""
+def _resolve_development_env_path(
+    env_path: Optional[Union[str, Path]],
+) -> Union[str, Path]:
+    if env_path is not None:
+        return env_path
+    configured = os.environ.get("VELVET_DEV_ENV_FILE", "").strip()
+    return configured or ".velvet-dev/env.sh"
+
+
+def _prepare_development_conversation_transport(env_path: Union[str, Path]) -> None:
+    """Give dev-start a local conversation endpoint without changing deployment defaults."""
+    if "VELVET_CONVERSATION_SOCKET_ENABLED" not in os.environ:
+        os.environ["VELVET_CONVERSATION_SOCKET_ENABLED"] = "true"
+
     if os.environ.get("VELVET_CONVERSATION_SOCKET_PATH"):
         return
 
@@ -65,15 +77,16 @@ def _prepare_development_conversation_socket(env_path: Union[str, Path]) -> None
 
 def start_development_runtime(
     *,
-    env_path: Union[str, Path] = ".velvet-dev/env.sh",
+    env_path: Optional[Union[str, Path]] = None,
     preflight: Optional[Callable[[], object]] = None,
     runtime_entrypoint: Optional[Callable[[], object]] = None,
 ) -> int:
-    values = load_development_environment(env_path)
+    resolved_env_path = _resolve_development_env_path(env_path)
+    values = load_development_environment(resolved_env_path)
     os.environ.update(values)
     os.environ["VELVET_RUNTIME_MODE"] = "development"
     os.environ["VELVET_PHYSICAL_AUTHORITY"] = "disabled"
-    _prepare_development_conversation_socket(env_path)
+    _prepare_development_conversation_transport(resolved_env_path)
 
     if preflight is None:
         from services.startup_doctor import run_runtime_preflight

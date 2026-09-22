@@ -70,6 +70,7 @@ class DevelopmentStartTests(unittest.TestCase):
             env_path = write_env(Path(tmp))
             runtime = MagicMock()
             with patch.dict(os.environ, {}, clear=False):
+                os.environ.pop("VELVET_CONVERSATION_SOCKET_ENABLED", None)
                 result = start_development_runtime(
                     env_path=env_path,
                     preflight=lambda: SimpleNamespace(ready=True),
@@ -77,6 +78,7 @@ class DevelopmentStartTests(unittest.TestCase):
                 )
                 self.assertEqual(os.environ["VELVET_RUNTIME_MODE"], "development")
                 self.assertEqual(os.environ["VELVET_PHYSICAL_AUTHORITY"], "disabled")
+                self.assertEqual(os.environ["VELVET_CONVERSATION_SOCKET_ENABLED"], "true")
             self.assertEqual(result, 0)
             runtime.assert_called_once_with()
 
@@ -95,6 +97,7 @@ class DevelopmentStartTests(unittest.TestCase):
                     os.environ["VELVET_CONVERSATION_SOCKET_PATH"],
                     str(root.resolve() / "run" / "conversation.sock"),
                 )
+                self.assertEqual(os.environ["VELVET_CONVERSATION_SOCKET_ENABLED"], "true")
                 self.assertTrue((root / "run").is_dir())
             self.assertEqual(result, 0)
 
@@ -115,8 +118,52 @@ class DevelopmentStartTests(unittest.TestCase):
                     runtime_entrypoint=runtime,
                 )
                 self.assertEqual(os.environ["VELVET_CONVERSATION_SOCKET_PATH"], explicit)
+                self.assertEqual(os.environ["VELVET_CONVERSATION_SOCKET_ENABLED"], "true")
                 self.assertFalse((root / "run").exists())
             self.assertEqual(result, 0)
+
+    def test_dev_start_preserves_explicit_conversation_disable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env_path = write_env(root)
+            runtime = MagicMock()
+            with patch.dict(
+                os.environ,
+                {"VELVET_CONVERSATION_SOCKET_ENABLED": "false"},
+                clear=True,
+            ):
+                result = start_development_runtime(
+                    env_path=env_path,
+                    preflight=lambda: SimpleNamespace(ready=True),
+                    runtime_entrypoint=runtime,
+                )
+                self.assertEqual(os.environ["VELVET_CONVERSATION_SOCKET_ENABLED"], "false")
+                self.assertEqual(
+                    os.environ["VELVET_CONVERSATION_SOCKET_PATH"],
+                    str(root.resolve() / "run" / "conversation.sock"),
+                )
+            self.assertEqual(result, 0)
+
+    def test_dev_start_honors_configured_environment_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env_path = write_env(root)
+            runtime = MagicMock()
+            with patch.dict(
+                os.environ,
+                {"VELVET_DEV_ENV_FILE": str(env_path)},
+                clear=True,
+            ):
+                result = start_development_runtime(
+                    preflight=lambda: SimpleNamespace(ready=True),
+                    runtime_entrypoint=runtime,
+                )
+                self.assertEqual(
+                    os.environ["VELVET_CONVERSATION_SOCKET_PATH"],
+                    str(root.resolve() / "run" / "conversation.sock"),
+                )
+            self.assertEqual(result, 0)
+            runtime.assert_called_once_with()
 
 
 if __name__ == "__main__":

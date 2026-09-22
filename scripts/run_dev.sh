@@ -6,13 +6,19 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
-PYTHON_BIN="${VELVET_DEV_PYTHON:-python3}"
+if [[ -n "${VELVET_DEV_PYTHON:-}" ]]; then
+  PYTHON_BIN="${VELVET_DEV_PYTHON}"
+elif [[ -x "${REPO_ROOT}/.venv/bin/python" ]]; then
+  PYTHON_BIN="${REPO_ROOT}/.venv/bin/python"
+else
+  PYTHON_BIN="python3"
+fi
 ENV_FILE="${VELVET_DEV_ENV_FILE:-${REPO_ROOT}/.velvet-dev/env.sh}"
 CHECK_ONLY=false
 
 usage() {
   cat <<'EOF'
-Usage: ./scripts/run_dev.sh [--check]
+Usage: bash scripts/run_dev.sh [--check]
 
   --check   Bootstrap if needed, run Velvet doctor, then exit.
 EOF
@@ -37,20 +43,23 @@ if [[ ! -f "${ENV_FILE}" ]]; then
   exit 2
 fi
 
-# Generated locally by bootstrap_dev_state.py and ignored by Git.
-# shellcheck disable=SC1090
-source "${ENV_FILE}"
-
-export VELVET_RUNTIME_MODE="development-read-only"
-
-echo "[VELVET DEV] Running startup doctor."
-"${PYTHON_BIN}" "${REPO_ROOT}/velvet_cli.py" doctor
-
 if [[ "${CHECK_ONLY}" == true ]]; then
+  # Generated locally by bootstrap_dev_state.py and ignored by Git.
+  # shellcheck disable=SC1090
+  source "${ENV_FILE}"
+  export VELVET_RUNTIME_MODE="development-read-only"
+  export VELVET_PHYSICAL_AUTHORITY="disabled"
+  echo "[VELVET DEV] Running startup doctor."
+  "${PYTHON_BIN}" "${REPO_ROOT}/velvet_cli.py" doctor
   echo "[VELVET DEV] Read-only development state is ready."
   exit 0
 fi
 
-echo "[VELVET DEV] Starting Velvet Runtime in development-read-only mode."
+# Normal startup goes through the maintained dev-start safety doorway so the
+# strict environment loader, disabled physical authority, and repo-local
+# optional transports cannot drift from systemd or direct CLI startup.
+export VELVET_DEV_ENV_FILE="${ENV_FILE}"
+echo "[VELVET DEV] Starting Velvet Runtime through the maintained dev-start doorway."
+echo "[VELVET DEV] Python: ${PYTHON_BIN}"
 echo "[VELVET DEV] Press Ctrl+C for a clean shutdown."
-exec "${PYTHON_BIN}" "${REPO_ROOT}/main.py"
+exec "${PYTHON_BIN}" "${REPO_ROOT}/velvet_cli.py" dev-start

@@ -56,6 +56,49 @@ class DevLauncherTests(unittest.TestCase):
             self.assertIn("velvet_cli.py doctor", calls)
             self.assertNotIn("main.py", calls)
 
+    def test_normal_mode_routes_through_maintained_dev_start(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env_file = root / "env.sh"
+            log_file = root / "python-calls.log"
+            fake_python = root / "fake-python"
+
+            env_file.write_text(
+                'export VELVET_COURT_POLICY_PATH="/tmp/dev-court.json"\n',
+                encoding="utf-8",
+            )
+            fake_python.write_text(
+                "#!/usr/bin/env bash\n"
+                "printf '%s\\n' \"$*\" >> \"$VELVET_TEST_LOG\"\n"
+                "printf 'env=%s\\n' \"$VELVET_DEV_ENV_FILE\" >> \"$VELVET_TEST_LOG\"\n"
+                "exit 0\n",
+                encoding="utf-8",
+            )
+            fake_python.chmod(0o755)
+
+            environment = os.environ.copy()
+            environment.update(
+                {
+                    "VELVET_DEV_PYTHON": str(fake_python),
+                    "VELVET_DEV_ENV_FILE": str(env_file),
+                    "VELVET_TEST_LOG": str(log_file),
+                }
+            )
+            result = subprocess.run(
+                ["bash", str(LAUNCHER)],
+                cwd=REPO_ROOT,
+                env=environment,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            calls = log_file.read_text(encoding="utf-8")
+            self.assertIn("velvet_cli.py dev-start", calls)
+            self.assertIn("env=%s" % env_file, calls)
+            self.assertNotIn("main.py", calls)
+
     def test_unknown_argument_fails_without_starting_python(self):
         environment = os.environ.copy()
         environment["VELVET_DEV_PYTHON"] = "/definitely/not/python"
