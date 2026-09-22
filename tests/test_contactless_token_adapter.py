@@ -77,7 +77,7 @@ class ContactlessRegistryTests(unittest.TestCase):
             registry_path = root / "registry.json"
             secret_path.write_bytes(SECRET)
             os.chmod(secret_path, 0o600)
-            token_ref = derive_token_reference(SECRET, "rdm6300-main", "01000734E0")
+            token_ref = derive_token_reference(SECRET, "car-main", "01000734E0")
             registry_path.write_text(
                 json.dumps(
                     {
@@ -154,6 +154,13 @@ class ContactlessTokenAdapterTests(unittest.TestCase):
             os.chmod(path, 0o600)
             return ContactlessTokenRegistry.load(path)
 
+    def test_default_reader_identity_is_main_in_car(self) -> None:
+        self.assertEqual(self.config.reader_id, "car-main")
+        self.assertEqual(self.config.module_id, "contactless-token-car-main")
+        self.assertEqual(self.config.reader_label, "Main in Car")
+        self.assertEqual(self.config.location_id, "vehicle.cabin")
+        self.assertEqual(self.config.interface_type, "uart-rdm6300-read-only")
+
     def test_matched_factor_is_evidence_not_permission(self) -> None:
         adapter = ContactlessTokenAdapter(self.config)
         adapter.mark_ready(now_wall=99.0)
@@ -166,6 +173,10 @@ class ContactlessTokenAdapterTests(unittest.TestCase):
         )
         payload = cycle.sensor_event["payload"]
         factor = payload["payload"]
+        self.assertEqual(payload["module_id"], "contactless-token-car-main")
+        self.assertEqual(factor["reader_id"], "car-main")
+        self.assertEqual(factor["reader_label"], "Main in Car")
+        self.assertEqual(factor["location_id"], "vehicle.cabin")
         self.assertEqual(factor["match_state"], "MATCHED")
         self.assertEqual(factor["principal_ref"], "principal:owner")
         self.assertFalse(factor["presence_claimed"])
@@ -175,6 +186,14 @@ class ContactlessTokenAdapterTests(unittest.TestCase):
         serialized = json.dumps(cycle.sensor_event, sort_keys=True)
         self.assertNotIn(self.frame.data_hex, serialized)
         self.assertNotIn(self.frame.tag_hex, serialized)
+
+    def test_ready_health_carries_reader_location_without_authority(self) -> None:
+        cycle = ContactlessTokenAdapter(self.config).mark_ready(now_wall=99.0)
+        diagnostic = cycle.health_event["payload"]["diagnostic_payload"]
+        self.assertEqual(diagnostic["reader_id"], "car-main")
+        self.assertEqual(diagnostic["reader_label"], "Main in Car")
+        self.assertEqual(diagnostic["location_id"], "vehicle.cabin")
+        self.assertTrue(diagnostic["read_only"])
 
     def test_unknown_and_disabled_are_receipted_without_identity_claim(self) -> None:
         adapter = ContactlessTokenAdapter(self.config)
