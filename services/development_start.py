@@ -52,6 +52,17 @@ def load_development_environment(env_path: Union[str, Path]) -> Dict[str, str]:
     return values
 
 
+def _prepare_development_conversation_socket(env_path: Union[str, Path]) -> None:
+    """Give dev-start a writable socket path without changing deployed defaults."""
+    if os.environ.get("VELVET_CONVERSATION_SOCKET_PATH"):
+        return
+
+    dev_root = Path(env_path).expanduser().resolve().parent
+    run_dir = dev_root / "run"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    os.environ["VELVET_CONVERSATION_SOCKET_PATH"] = str(run_dir / "conversation.sock")
+
+
 def start_development_runtime(
     *,
     env_path: Union[str, Path] = ".velvet-dev/env.sh",
@@ -62,6 +73,7 @@ def start_development_runtime(
     os.environ.update(values)
     os.environ["VELVET_RUNTIME_MODE"] = "development"
     os.environ["VELVET_PHYSICAL_AUTHORITY"] = "disabled"
+    _prepare_development_conversation_socket(env_path)
 
     if preflight is None:
         from services.startup_doctor import run_runtime_preflight
