@@ -8,6 +8,8 @@ bash scripts/run_dev.sh
 
 The launcher keeps the historical shell entry point, but normal startup now delegates to the maintained `velvet_cli.py dev-start` safety doorway. That prevents the shell launcher and the systemd/direct-CLI path from drifting apart.
 
+When `scripts/up2_prepare.py` has created the Runtime `.venv`, the launcher prefers `.venv/bin/python` so sibling ecosystem packages exposed through the prepared workspace `.pth` file are available. `VELVET_DEV_PYTHON` remains an explicit override; otherwise the launcher falls back to `python3` when no prepared virtual environment exists.
+
 Normal startup performs this sequence:
 
 1. Creates `.velvet-dev/` state when it is missing.
