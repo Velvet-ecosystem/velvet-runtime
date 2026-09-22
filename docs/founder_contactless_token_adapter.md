@@ -10,6 +10,28 @@ The intended first hardware is a hard-wired RDM6300 UART board with a writable
 T5577/EM4305-class ring. Because that ring can be rewritten or cloned, a match is
 useful identity evidence but remains a low-confidence static factor.
 
+## First reader identity
+
+The first physical reader is the vehicle's primary cabin reader:
+
+```text
+human label: Main in Car
+reader_id: car-main
+module_id: contactless-token-car-main
+location_id: vehicle.cabin
+hardware: RDM6300 / 125 kHz EM4100-style contactless
+```
+
+The logical identity describes the reader's role and location, not the current
+board model. Replacing the RDM6300 later does not require renaming `car-main`.
+Additional readers should receive their own reader ID, module ID, and location so
+Runtime can retain their evidence independently.
+
+The reader is a headless Runtime service. It continues observing and receipting
+presentations whether the Interface is on Home, Forge, Climate, another surface,
+or not running at all. `nfc_status` is only an optional view of evidence already
+produced by Runtime.
+
 ```text
 contactless ring or tag
   -> read-only 9600-baud RDM6300 UART frame
@@ -18,7 +40,7 @@ contactless ring or tag
   -> private 0600 registry match
   -> verification-only SensorPacket
   -> locked Runtime body snapshot and receipt journal
-  -> Interface nfc_status widget
+  -> optional Interface nfc_status widget
 ```
 
 ## Evidence states
@@ -39,6 +61,10 @@ static_identifier: true
 cryptographic_challenge: false
 ```
 
+The presentation also carries `reader_id`, `reader_label`, and `location_id` so
+later owner/guest personalization can distinguish where a factor was observed.
+Those fields are evidence metadata and do not grant access.
+
 Touch, voice, recognition, vehicle state, Court policy, and receipts remain
 separate evidence and decision layers.
 
@@ -54,6 +80,10 @@ The body snapshot, journal, Interface, and registry use only the resulting
 `hmac-sha256:` reference. Reader-specific derivation prevents the same tag from
 having one reusable reference across unrelated readers.
 
+Changing a reader ID changes its derived HMAC references. If a tag was probed
+under an older reader ID, probe it again under `car-main` before adding it to the
+registry.
+
 Create the local secret with private permissions:
 
 ```bash
@@ -67,7 +97,7 @@ tag value:
 ```bash
 sudo -u velvet python3 scripts/contactless_token_reference_probe.py \
   --device /dev/ttyS5 \
-  --reader-id rdm6300-main
+  --reader-id car-main
 ```
 
 Create `/etc/velvet/contactless-token-registry.json` with mode `0600`:
@@ -89,6 +119,8 @@ Create `/etc/velvet/contactless-token-registry.json` with mode `0600`:
 
 The registry is evidence mapping, not a permission table. `role_hint` and
 `principal_ref` are claims for later multi-factor evaluation, not Court grants.
+A guest tag can use a different `principal_ref`, label, and `role_hint` without
+changing the reader service.
 
 ## Reader behavior
 
