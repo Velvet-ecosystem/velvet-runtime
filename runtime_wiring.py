@@ -123,6 +123,15 @@ def _positive_int_env(name, default):
     return value
 
 
+def _execution_receipts_path() -> str:
+    """Resolve the execution-receipt store without baking in a host path."""
+
+    return os.environ.get(
+        "VELVET_EXECUTION_RECEIPTS_PATH",
+        "receipts/receipts.jsonl",
+    ).strip() or "receipts/receipts.jsonl"
+
+
 def build_runtime() -> dict:
     """Assemble and return the mandatory Velvet runtime core."""
 
@@ -138,8 +147,9 @@ def build_runtime() -> dict:
             f"Ensure the package is installed. Detail: {exc}"
         ) from exc
 
-    validator = JsonlReceiptValidator(receipts_path="receipts/receipts.jsonl")
-    logger.info("[BOOT] Receipt validator initialized.")
+    receipt_path = _execution_receipts_path()
+    validator = JsonlReceiptValidator(receipts_path=receipt_path)
+    logger.info("[BOOT] Receipt validator initialized. Path: %s", receipt_path)
 
     try:
         from velvet_event_protocol.enforcer import EventEnforcer
