@@ -25,7 +25,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--reader-id",
-        default=os.environ.get("VELVET_CONTACTLESS_READER_ID", "rdm6300-main"),
+        default=os.environ.get("VELVET_CONTACTLESS_READER_ID", "car-main"),
     )
     parser.add_argument(
         "--secret",
