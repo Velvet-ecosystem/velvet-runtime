@@ -23,10 +23,12 @@ from services.rdm6300_reader import Rdm6300Frame
 
 @dataclass(frozen=True)
 class ContactlessTokenAdapterConfig:
-    module_id: str = "contactless-token-main"
+    module_id: str = "contactless-token-car-main"
     node_id: str = "founder-up2"
     owning_handmaiden: str = "Velvet"
-    reader_id: str = "rdm6300-main"
+    reader_id: str = "car-main"
+    reader_label: str = "Main in Car"
+    location_id: str = "vehicle.cabin"
     interface_type: str = "uart-rdm6300-read-only"
     stale_after_ms: int = 5000
     repeat_suppression_ms: int = 750
@@ -38,6 +40,8 @@ class ContactlessTokenAdapterConfig:
             "node_id",
             "owning_handmaiden",
             "reader_id",
+            "reader_label",
+            "location_id",
             "interface_type",
             "calibration_version",
         ):
@@ -160,6 +164,8 @@ class ContactlessTokenAdapter:
             "match_state": match_state,
             "token_ref": token_ref,
             "reader_id": self.config.reader_id,
+            "reader_label": self.config.reader_label,
+            "location_id": self.config.location_id,
             "factor_confidence": factor_confidence,
             "static_identifier": True,
             "cryptographic_challenge": False,
@@ -281,6 +287,9 @@ class ContactlessTokenAdapter:
             "diagnostic_payload": {
                 "detail": detail,
                 "reason_code": reason_code,
+                "reader_id": self.config.reader_id,
+                "reader_label": self.config.reader_label,
+                "location_id": self.config.location_id,
                 "read_only": True,
             },
             "receipt_id": event_id,

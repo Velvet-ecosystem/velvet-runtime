@@ -31,8 +31,22 @@ def build_parser() -> argparse.ArgumentParser:
         default=os.environ.get("VELVET_CONTACTLESS_DEVICE", "/dev/ttyS5"),
     )
     parser.add_argument(
+        "--module-id",
+        default=os.environ.get(
+            "VELVET_CONTACTLESS_MODULE_ID", "contactless-token-car-main"
+        ),
+    )
+    parser.add_argument(
         "--reader-id",
-        default=os.environ.get("VELVET_CONTACTLESS_READER_ID", "rdm6300-main"),
+        default=os.environ.get("VELVET_CONTACTLESS_READER_ID", "car-main"),
+    )
+    parser.add_argument(
+        "--reader-label",
+        default=os.environ.get("VELVET_CONTACTLESS_READER_LABEL", "Main in Car"),
+    )
+    parser.add_argument(
+        "--location-id",
+        default=os.environ.get("VELVET_CONTACTLESS_LOCATION_ID", "vehicle.cabin"),
     )
     parser.add_argument(
         "--secret",
@@ -93,7 +107,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 def run_bridge(args: argparse.Namespace) -> int:
     config = ContactlessTokenAdapterConfig(
+        module_id=args.module_id,
         reader_id=args.reader_id,
+        reader_label=args.reader_label,
+        location_id=args.location_id,
         stale_after_ms=args.evidence_ttl_ms,
         repeat_suppression_ms=args.repeat_suppression_ms,
     )
