@@ -150,7 +150,10 @@ class SensorFabricEventBridgeTests(unittest.TestCase):
         bridge = attach_sensor_fabric_event_bridge(bus)
 
         self.assertEqual(len(bus.handlers), 1)
-        self.assertIs(bus.handlers[0], bridge.handle)
+        # Accessing an instance method produces a new bound-method object each
+        # time, so identity must be checked by the bound instance and function.
+        self.assertIs(bus.handlers[0].__self__, bridge)
+        self.assertIs(bus.handlers[0].__func__, bridge.handle.__func__)
 
     def test_rejects_sensor_event_without_mapping_payload(self):
         bridge = SensorFabricEventBridge(SensorFabric())
