@@ -66,9 +66,9 @@ There is no generic remote EventBus and no remote procedure-call surface on this
 
 After HMAC and replay admission, `SensorLanRuntimeBinding` sends only the three admitted sensor event families through a narrow Runtime publisher. Runtime assigns the internal event source as `sensor-lan:<authenticated-node-id>` and publishes through `EventEnforcer` rather than exposing `EventBus` to the network layer.
 
-The sensor-fabric EventBus bridge is attached during mandatory Runtime wiring, so an admitted remote message follows the same internal evidence path as local normalized sensor events.
+The public Runtime object remains the long-standing two-key interface: `publish` and `receipt_validator`. EventBus, EventEnforcer, and the sensor-fabric bridge remain private Runtime references and are not added to that public surface.
 
-Network binding itself is delayed until after continuity verification and secure Runtime/module provisioning succeed.
+After continuity verification and secure Runtime/module provisioning succeed, Runtime activates the sensor-fabric EventBus bridge through its private boot wiring. Only then can the optional LAN listener receive the narrow authenticated sensor publisher and bind its network socket.
 
 ## Explicit enablement
 
@@ -118,6 +118,7 @@ remote Velvet node
   -> SensorLanIngress
   -> verified SensorLanAdmission
   -> SensorLanRuntimeBinding
+  -> narrow post-secure-boot Runtime publisher
   -> EventEnforcer
   -> internal EventBus
   -> SensorFabricEventBridge
