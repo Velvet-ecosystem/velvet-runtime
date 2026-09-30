@@ -1,6 +1,6 @@
 # Sensor Fabric Runtime v0.1
 
-Status: initial runtime foundation.
+Status: initial runtime foundation with bounded EventBus intake.
 
 ## Purpose
 
@@ -83,6 +83,73 @@ The same normalized observation may therefore be eligible for one use and inelig
 
 Degraded observations are not silently discarded by the fabric. If the commissioning condition is satisfied, the evidence is routed with its health and quality state intact so the consumer can reduce confidence, degrade behavior, or investigate disagreement appropriately.
 
+## EventBus intake
+
+`services.sensor_fabric_event_bridge.SensorFabricEventBridge` is the first binding between admitted Runtime events and the sensor fabric. It consumes only:
+
+- `SENSOR_CAPABILITIES_REPORTED`
+- `SENSOR_LIFECYCLE_REPORTED`
+- `SENSOR_OBSERVATION_REPORTED`
+
+Unrelated EventBus traffic is ignored.
+
+The bridge does not invoke consumer callbacks from the EventBus handler. Observation deliveries are retained in a bounded FIFO evidence queue for later consumer binding. If that queue overflows, the oldest retained delivery is discarded and `dropped_delivery_count` is incremented so evidence loss is explicit rather than silent.
+
+The bridge receives events only after they have entered Runtime through the normal Event Protocol and enforcement boundary. It does not expose the EventBus to modules and it creates no alternative publishing path.
+
+## Transport policy
+
+The sensor fabric and Event Protocol remain transport-neutral. LAN and CAN are complementary lanes, not competing definitions of the sensor contract.
+
+### Ethernet / LAN backbone
+
+Ethernet is the preferred backbone between compute-capable Velvet nodes and for bulk or high-rate sensor traffic. Typical uses include:
+
+- UP2 to Luckfox or Raspberry Pi service traffic
+- distributed Event Protocol gateways
+- camera streams
+- radar raw, diagnostic, or dense detection data when the hardware supports Ethernet
+- software updates, logs, receipts, and engineering captures
+
+The in-process EventBus is not itself a LAN protocol. A future distributed gateway may carry normalized events across Ethernet, but it must terminate the network transport and admit the resulting event through Runtime rather than distributing direct EventBus access.
+
+### Velvet CAN / CAN-FD field bus
+
+A separate Velvet-owned CAN lane may be used for deterministic, compact endpoint traffic such as:
+
+- local microcontroller sensor pods
+- heartbeat and health state
+- simple cabin sensors
+- compact radar object summaries when a radar or gateway provides them
+- low-rate actuator feedback and state reporting
+- node discovery and bounded service messages
+
+CAN-FD is preferred for new high-density Velvet field-bus endpoints because of its larger payload and higher data-phase bandwidth. Classic CAN remains suitable for small legacy endpoints and simple telemetry.
+
+Velvet CAN is not the same thing as the vehicle OEM CAN bus.
+
+### Vehicle CAN separation
+
+OEM vehicle CAN remains physically and logically separated from the Velvet-owned field bus. `velvet-vehicle-can` currently observes vehicle CAN through its receive-only boundary and converts that evidence into Runtime-facing observations. Frames are not blindly bridged between OEM CAN and Velvet CAN.
+
+Any future write-capable vehicle path remains a separate executor and Court-authority problem. It does not become legal merely because the internal Velvet field bus can transmit.
+
+### Adapter rule
+
+Regardless of transport, the path is:
+
+```text
+hardware or remote sensor
+  -> transport-specific adapter/gateway
+  -> normalized Event Protocol sensor evidence
+  -> admitted Runtime EventBus event
+  -> SensorFabricEventBridge
+  -> SensorFabric
+  -> evidence consumer
+```
+
+This allows the same sensor contract to arrive over Ethernet, CAN-FD, classic CAN, USB, UART, or another link without teaching consumers about the wire protocol.
+
 ## Time and ordering
 
 The fabric preserves observation measurement and receive timestamps. Older evidence can still be delivered because delayed evidence may remain valuable for logging, reconstruction, or fusion diagnostics.
@@ -106,7 +173,14 @@ Sensor measurement capabilities are different. A declaration that a sensor can p
 - normalized observation routing
 - live sensor-state lookup
 
-The initial routing API returns deterministic `SensorDelivery` values instead of invoking callbacks. This keeps the core transport-neutral, testable, and free of hidden execution paths.
+`SensorFabricEventBridge` currently provides:
+
+- bounded EventBus intake for sensor capabilities, lifecycle, and observations
+- deterministic delivery retention
+- explicit overflow accounting
+- direct testability without exposing EventBus internals
+
+The routing layer returns deterministic `SensorDelivery` values instead of invoking hidden execution callbacks. This keeps the core transport-neutral, testable, and free of hidden execution paths.
 
 ## Compatibility
 
@@ -114,10 +188,10 @@ The Runtime repository retains its Python 3.8 baseline. Sensor fabric code there
 
 ## Next layers
 
-After this in-process core is accepted, later work can add narrowly scoped bindings for:
+After EventBus intake, later work can add narrowly scoped bindings for:
 
-- Event Protocol / event-bus intake
-- local IPC and distributed sensor sources
+- distributed Ethernet/LAN sensor gateways
+- Velvet CAN/CAN-FD gateway framing and admission
 - coordinate-frame transform lookup
 - clock normalization and stale-evidence policy
 - diagnostic and raw-capture retention tiers
