@@ -1,10 +1,10 @@
 """Mandatory runtime wiring for Velvet.
 
 This module assembles the event bus, receipt validator, event enforcer,
-hardened publishing callable, optional self-health speech bridge, optional
-speech-expression egress, and one inert advisory-brain presence probe. The
-brain receives no runtime references and is never attached. Interface lifecycle
-activation occurs only after continuity and secure boot complete.
+hardened publishing callable, sensor-fabric intake, optional self-health speech
+bridge, optional speech-expression egress, and one inert advisory-brain presence
+probe. The brain receives no runtime references and is never attached. Interface
+lifecycle activation occurs only after continuity and secure boot complete.
 """
 
 import os
@@ -13,6 +13,8 @@ from velvet_logging.logger import get_logger
 from receipts.validator import JsonlReceiptValidator
 from services.runtime_maintenance import configure_speech_egress
 from services.safe_publish import make_safe_publish
+from services.sensor_fabric_event_bridge import attach_sensor_fabric_event_bridge
+from services.sensor_lan_ingress import LAN_SENSOR_EVENT_TYPES
 
 logger = get_logger("velvet.wiring")
 
@@ -132,6 +134,25 @@ def _execution_receipts_path() -> str:
     ).strip() or "receipts/receipts.jsonl"
 
 
+def _sensor_lan_publisher(enforcer):
+    """Build a narrow publisher for already-authenticated sensor LAN evidence."""
+
+    def publish_sensor_lan(*, event_type, payload, node_id):
+        if event_type not in LAN_SENSOR_EVENT_TYPES:
+            raise ValueError("sensor LAN publisher accepts sensor evidence only")
+        if not isinstance(node_id, str) or not node_id.strip():
+            raise ValueError("sensor LAN node_id must be non-empty text")
+        if not isinstance(payload, dict):
+            raise TypeError("sensor LAN payload must be a dict")
+        return enforcer.publish(
+            event_type=event_type,
+            payload=dict(payload),
+            source="sensor-lan:%s" % node_id.strip(),
+        )
+
+    return publish_sensor_lan
+
+
 def build_runtime() -> dict:
     """Assemble and return the mandatory Velvet runtime core."""
 
@@ -163,6 +184,12 @@ def build_runtime() -> dict:
     safe_publish = make_safe_publish(enforcer)
     logger.info("[BOOT] Hardened safe_publish callable built.")
 
+    sensor_fabric_bridge = attach_sensor_fabric_event_bridge(bus)
+    logger.info(
+        "[BOOT] Sensor fabric EventBus intake attached. Evidence remains non-authorizing."
+    )
+    sensor_lan_publish = _sensor_lan_publisher(enforcer)
+
     _attach_self_health_speech(bus, enforcer)
     configure_speech_egress(_attach_speech_expression_egress(bus))
 
@@ -181,6 +208,8 @@ def build_runtime() -> dict:
     runtime = {
         "publish": safe_publish,
         "receipt_validator": validator.validate,
+        "sensor_lan_publish": sensor_lan_publish,
     }
+    _ = sensor_fabric_bridge
     logger.info("[BOOT] Mandatory runtime core wiring complete.")
     return runtime
