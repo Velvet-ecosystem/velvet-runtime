@@ -1,10 +1,10 @@
 """Mandatory runtime wiring for Velvet.
 
 This module assembles the event bus, receipt validator, event enforcer,
-hardened publishing callable, sensor-fabric intake, optional self-health speech
-bridge, optional speech-expression egress, and one inert advisory-brain presence
-probe. The brain receives no runtime references and is never attached. Interface
-lifecycle activation occurs only after continuity and secure boot complete.
+hardened publishing callable, optional self-health speech bridge, optional
+speech-expression egress, and one inert advisory-brain presence probe. The
+public Runtime surface remains deliberately tiny. Sensor-fabric and remote
+sensor-LAN services are activated later through a private post-secure-boot path.
 """
 
 import os
@@ -17,6 +17,21 @@ from services.sensor_fabric_event_bridge import attach_sensor_fabric_event_bridg
 from services.sensor_lan_ingress import LAN_SENSOR_EVENT_TYPES
 
 logger = get_logger("velvet.wiring")
+
+
+class _PrivateRuntimeState:
+    """Runtime-only references that must never enter the public runtime dict."""
+
+    __slots__ = ("bus", "enforcer", "sensor_fabric_bridge", "sensor_lan_publish")
+
+    def __init__(self, bus, enforcer):
+        self.bus = bus
+        self.enforcer = enforcer
+        self.sensor_fabric_bridge = None
+        self.sensor_lan_publish = None
+
+
+_PRIVATE_RUNTIME_STATE = None
 
 
 def _attach_self_health_speech(bus, enforcer) -> bool:
@@ -153,8 +168,34 @@ def _sensor_lan_publisher(enforcer):
     return publish_sensor_lan
 
 
+def activate_sensor_services():
+    """Activate sensor EventBus intake after continuity and secure boot pass.
+
+    Returns only the narrow authenticated sensor-LAN publishing callable. The
+    EventBus, EventEnforcer, and SensorFabric bridge remain private to Runtime.
+    Repeated activation is idempotent for the current Runtime instance.
+    """
+
+    state = _PRIVATE_RUNTIME_STATE
+    if state is None:
+        raise RuntimeError("build_runtime must complete before sensor services activate")
+
+    if state.sensor_lan_publish is not None:
+        return state.sensor_lan_publish
+
+    state.sensor_fabric_bridge = attach_sensor_fabric_event_bridge(state.bus)
+    state.sensor_lan_publish = _sensor_lan_publisher(state.enforcer)
+    logger.info(
+        "[BOOT] Sensor fabric intake activated after secure boot. "
+        "Evidence remains non-authorizing."
+    )
+    return state.sensor_lan_publish
+
+
 def build_runtime() -> dict:
     """Assemble and return the mandatory Velvet runtime core."""
+
+    global _PRIVATE_RUNTIME_STATE
 
     logger.info("[BOOT] Building mandatory Velvet runtime core...")
 
@@ -184,11 +225,9 @@ def build_runtime() -> dict:
     safe_publish = make_safe_publish(enforcer)
     logger.info("[BOOT] Hardened safe_publish callable built.")
 
-    sensor_fabric_bridge = attach_sensor_fabric_event_bridge(bus)
-    logger.info(
-        "[BOOT] Sensor fabric EventBus intake attached. Evidence remains non-authorizing."
-    )
-    sensor_lan_publish = _sensor_lan_publisher(enforcer)
+    # Keep bus/enforcer available only to trusted Runtime boot wiring. The public
+    # runtime object intentionally remains the long-standing two-key interface.
+    _PRIVATE_RUNTIME_STATE = _PrivateRuntimeState(bus, enforcer)
 
     _attach_self_health_speech(bus, enforcer)
     configure_speech_egress(_attach_speech_expression_egress(bus))
@@ -208,8 +247,6 @@ def build_runtime() -> dict:
     runtime = {
         "publish": safe_publish,
         "receipt_validator": validator.validate,
-        "sensor_lan_publish": sensor_lan_publish,
     }
-    _ = sensor_fabric_bridge
     logger.info("[BOOT] Mandatory runtime core wiring complete.")
     return runtime
