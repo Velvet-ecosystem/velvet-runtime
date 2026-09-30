@@ -1,6 +1,6 @@
 # Sensor Fabric Runtime v0.1
 
-Status: initial runtime foundation with bounded EventBus intake.
+Status: initial runtime foundation with bounded EventBus intake and authenticated LAN admission.
 
 ## Purpose
 
@@ -111,7 +111,31 @@ Ethernet is the preferred backbone between compute-capable Velvet nodes and for 
 - radar raw, diagnostic, or dense detection data when the hardware supports Ethernet
 - software updates, logs, receipts, and engineering captures
 
-The in-process EventBus is not itself a LAN protocol. A future distributed gateway may carry normalized events across Ethernet, but it must terminate the network transport and admit the resulting event through Runtime rather than distributing direct EventBus access.
+The in-process EventBus is not itself a LAN protocol. A distributed gateway may carry normalized events across Ethernet, but it must terminate the network transport and admit the resulting event through Runtime rather than distributing direct EventBus access.
+
+### Authenticated sensor LAN admission
+
+`services.sensor_lan_ingress.SensorLanIngress` defines the first bounded application-layer admission contract for normalized sensor evidence arriving from another Velvet compute node.
+
+The v0.1 wire envelope carries:
+
+- schema identifier
+- authenticated node identity
+- boot/session identity
+- message identity
+- monotonic per-session sequence
+- sender timestamp preserved as evidence
+- one of the three admitted sensor event types
+- the normalized Event Protocol payload
+- HMAC-SHA256 signature
+
+Ingress enforces a maximum message size, a configured node-key allowlist, HMAC integrity/authenticity, a bounded session table, and in-memory replay/out-of-order rejection. It returns a verified admission record. It does not publish directly to EventBus, open a socket, or obtain an executor handle.
+
+HMAC provides integrity and node authentication, not encryption. Link isolation, TLS, WireGuard/Tailscale, or another confidentiality layer may be added by deployment without changing the sensor contract.
+
+The sender timestamp is not currently used as a hard admission gate because embedded nodes may boot without trustworthy wall-clock time. Replay state is currently in-memory and therefore does not survive a Runtime restart. Durable replay state is a later layer.
+
+The LAN event envelope is intended for normalized metadata and sensor evidence. Bulk camera imagery, raw radar captures, large engineering recordings, and similar high-volume data should use dedicated LAN data paths and place references or compact derived evidence into Event Protocol rather than stuffing bulk binary content into the event envelope.
 
 ### Velvet CAN / CAN-FD field bus
 
@@ -180,17 +204,26 @@ Sensor measurement capabilities are different. A declaration that a sensor can p
 - explicit overflow accounting
 - direct testability without exposing EventBus internals
 
+`SensorLanIngress` currently provides:
+
+- canonical JSON LAN sensor framing
+- per-node HMAC authentication and integrity
+- bounded message and session state
+- per-session sequence replay rejection
+- verified admission records without direct EventBus access
+
 The routing layer returns deterministic `SensorDelivery` values instead of invoking hidden execution callbacks. This keeps the core transport-neutral, testable, and free of hidden execution paths.
 
 ## Compatibility
 
-The Runtime repository retains its Python 3.8 baseline. Sensor fabric code therefore uses Python 3.8-compatible syntax and participates in the repository-wide syntax gate as well as the normal Python 3.10, 3.11, and 3.12 test matrix.
+The Runtime repository retains its Python 3.8 baseline. Sensor fabric and LAN ingress code therefore use Python 3.8-compatible syntax and participate in the repository-wide syntax gate as well as the normal Python 3.10, 3.11, and 3.12 test matrix.
 
 ## Next layers
 
-After EventBus intake, later work can add narrowly scoped bindings for:
+After authenticated LAN admission, later work can add narrowly scoped bindings for:
 
-- distributed Ethernet/LAN sensor gateways
+- deployment listener/IPC binding that feeds complete messages into `SensorLanIngress`
+- durable replay/session state across Runtime restarts
 - Velvet CAN/CAN-FD gateway framing and admission
 - coordinate-frame transform lookup
 - clock normalization and stale-evidence policy
