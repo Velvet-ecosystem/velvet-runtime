@@ -7,7 +7,7 @@ import sys
 import time
 
 from velvet_logging.logger import get_logger
-from runtime_wiring import build_runtime
+from runtime_wiring import activate_sensor_services, build_runtime
 from services.body_health_journal_follower import BodyHealthJournalFollower
 from services.continuity_activation import (
     continuity_boot_passed,
@@ -110,11 +110,27 @@ def _optional_conversation_server(startup_timer):
         return None
 
 
-def _optional_sensor_lan_service(runtime, startup_timer):
-    """Start remote sensor LAN intake only after continuity and secure boot pass."""
+def _activate_sensor_services(startup_timer):
+    """Attach private sensor intake only after secure Runtime provisioning passes."""
 
     try:
-        service = build_optional_sensor_lan_service(runtime["sensor_lan_publish"])
+        publisher = activate_sensor_services()
+        startup_timer.mark("sensor services")
+        return publisher
+    except Exception as exc:
+        logger.warning("[BOOT] Sensor services could not activate: %s", exc)
+        return None
+
+
+def _optional_sensor_lan_service(sensor_lan_publish, startup_timer):
+    """Start remote sensor LAN intake only after private sensor services activate."""
+
+    if sensor_lan_publish is None:
+        logger.info("[BOOT] Sensor LAN listener inactive because sensor services are unavailable.")
+        return None
+
+    try:
+        service = build_optional_sensor_lan_service(sensor_lan_publish)
         if service is None:
             logger.info("[BOOT] Sensor LAN listener inactive; explicit enablement is unset.")
             return None
@@ -180,6 +196,8 @@ def main():
     )
     startup_timer.mark("local gateway")
 
+    sensor_lan_publish = _activate_sensor_services(startup_timer)
+
     optional_status = activate_optional_subsystems()
     startup_timer.mark("optional subsystems")
     logger.info(
@@ -190,7 +208,7 @@ def main():
     health_follower = _body_health_follower(runtime)
     startup_timer.mark("body health follower")
     conversation_server = _optional_conversation_server(startup_timer)
-    sensor_lan_service = _optional_sensor_lan_service(runtime, startup_timer)
+    sensor_lan_service = _optional_sensor_lan_service(sensor_lan_publish, startup_timer)
 
     logger.info(
         "[BOOT] Execution pipeline provisioned with four read-only executors "
