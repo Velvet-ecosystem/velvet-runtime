@@ -112,7 +112,6 @@ class SensorLanTcpClient:
             raise ValueError("payload must be a mapping")
 
         sequence = self._next_sequence
-        self._next_sequence += 1
         resolved_message_id = (
             uuid.uuid4().hex
             if message_id is None
@@ -135,6 +134,9 @@ class SensorLanTcpClient:
             max_frame_bytes=self.max_frame_bytes,
         )
 
+        # From this point onward the delivery state can become ambiguous. Never
+        # reuse the reserved sequence even if connect/send raises.
+        self._next_sequence += 1
         try:
             with socket.create_connection(
                 (self.host, self.port),
