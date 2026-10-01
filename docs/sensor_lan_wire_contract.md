@@ -62,6 +62,30 @@ The v0.1 listener is intentionally single-worker and bounded. It does not create
 
 There is no generic remote EventBus and no remote procedure-call surface on this port.
 
+## Reference sender
+
+`services.sensor_lan_client.SensorLanTcpClient` is the small reference sender for remote Velvet compute nodes. It creates a fresh random session ID when one is not supplied, reserves strictly increasing sequence numbers, signs the application message, adds the v0.1 TCP length prefix, sends one message, and closes the connection.
+
+The client exposes helpers for capability, lifecycle, and observation events. It accepts only the three sensor event families allowed by the receiver.
+
+There is deliberately no automatic retry in v0.1. Once a sequence number is reserved it is never reused within that client session, even if TCP transmission fails. This avoids accidentally reusing a sequence after an ambiguous partial delivery. Gaps are valid because Runtime requires increasing sequence numbers, not contiguous ones.
+
+A successful client return means the complete frame was handed to the local TCP stack/peer connection. It is **not** a Runtime admission acknowledgement. The receiver does not return an application ACK in v0.1.
+
+A sender node normally stores only its own HMAC key. `load_sensor_lan_sender_key()` reads a single hex-encoded key from a private regular file and rejects group/world-readable permissions. The receiving Runtime separately keeps the node-ID-to-key map.
+
+A software smoke test is provided in `examples/sensor_lan_sender_example.py`. With the Runtime listener already enabled and reachable, a remote node can run:
+
+```text
+python examples/sensor_lan_sender_example.py \
+  --host 10.42.0.1 \
+  --port 43191 \
+  --node-id velour \
+  --key-file /etc/velvet/sensor-lan.key
+```
+
+The example sends a capability declaration, a ready lifecycle event, and one read-only diagnostic observation. It does not request physical authority.
+
 ## Runtime binding
 
 After HMAC and replay admission, `SensorLanRuntimeBinding` sends only the three admitted sensor event families through a narrow Runtime publisher. Runtime assigns the internal event source as `sensor-lan:<authenticated-node-id>` and publishes through `EventEnforcer` rather than exposing `EventBus` to the network layer.
@@ -113,6 +137,7 @@ This envelope is intended for normalized observations, compact tracks, lifecycle
 
 ```text
 remote Velvet node
+  -> SensorLanTcpClient
   -> TCP length-prefixed frame
   -> complete authenticated message body
   -> SensorLanIngress
