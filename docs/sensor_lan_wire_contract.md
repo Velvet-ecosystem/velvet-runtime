@@ -44,6 +44,65 @@ A new authenticated session may begin again at sequence zero. Runtime stores the
 
 `sent_at` is retained as transport evidence but is not used as a hard freshness gate in v0.1 because embedded nodes may not have a trustworthy wall clock immediately after boot.
 
+## TCP framing
+
+The first concrete LAN listener uses IPv4 TCP and one application message per connection.
+
+The wire frame is:
+
+```text
+4-byte unsigned big-endian message length
+N bytes of complete velvet.sensor-lan.v0.1 JSON
+connection close
+```
+
+The length prefix is transport framing only. The JSON body remains independently authenticated by the HMAC contract above.
+
+The v0.1 listener is intentionally single-worker and bounded. It does not create one unbounded thread per connection. Each accepted connection has a short read timeout, and malformed, unauthenticated, replayed, truncated, or oversized frames are rejected without disabling the listener.
+
+There is no generic remote EventBus and no remote procedure-call surface on this port.
+
+## Runtime binding
+
+After HMAC and replay admission, `SensorLanRuntimeBinding` sends only the three admitted sensor event families through a narrow Runtime publisher. Runtime assigns the internal event source as `sensor-lan:<authenticated-node-id>` and publishes through `EventEnforcer` rather than exposing `EventBus` to the network layer.
+
+The public Runtime object remains the long-standing two-key interface: `publish` and `receipt_validator`. EventBus, EventEnforcer, and the sensor-fabric bridge remain private Runtime references and are not added to that public surface.
+
+After continuity verification and secure Runtime/module provisioning succeed, Runtime activates the sensor-fabric EventBus bridge through its private boot wiring. Only then can the optional LAN listener receive the narrow authenticated sensor publisher and bind its network socket.
+
+## Explicit enablement
+
+The listener is disabled unless all required deployment settings are provided.
+
+Required when enabled:
+
+```text
+VELVET_SENSOR_LAN_ENABLED=true
+VELVET_SENSOR_LAN_BIND_HOST=<explicit local interface address>
+VELVET_SENSOR_LAN_PORT=<1..65535>
+VELVET_SENSOR_LAN_KEYS_FILE=<private JSON key file>
+```
+
+Optional bounds:
+
+```text
+VELVET_SENSOR_LAN_MAX_FRAME_BYTES
+VELVET_SENSOR_LAN_MAX_SESSIONS
+VELVET_SENSOR_LAN_ACCEPT_TIMEOUT_SECONDS
+VELVET_SENSOR_LAN_CONNECTION_TIMEOUT_SECONDS
+```
+
+The keys file is a JSON object mapping stable node IDs to hex-encoded HMAC keys. Each decoded key must be at least 32 bytes. The file must be a regular file with no group or world permission bits. For example:
+
+```json
+{
+  "velour": "<64-or-more hex characters>",
+  "runtime-node": "<64-or-more hex characters>"
+}
+```
+
+The bind host is deliberately not defaulted to `0.0.0.0`. A deployment must choose the intended Velvet LAN interface explicitly.
+
 ## Size and bulk-data boundary
 
 The default maximum message size is 256 KiB.
@@ -54,14 +113,16 @@ This envelope is intended for normalized observations, compact tracks, lifecycle
 
 ```text
 remote Velvet node
-  -> LAN transport
-  -> complete message body
+  -> TCP length-prefixed frame
+  -> complete authenticated message body
   -> SensorLanIngress
   -> verified SensorLanAdmission
-  -> Runtime enforcement/publish binding
+  -> SensorLanRuntimeBinding
+  -> narrow post-secure-boot Runtime publisher
+  -> EventEnforcer
   -> internal EventBus
   -> SensorFabricEventBridge
   -> SensorFabric
 ```
 
-`SensorLanIngress` itself does not open a socket and does not receive EventBus access. This keeps network transport, admission, internal event routing, and authority as distinct layers.
+The LAN listener receives no EventBus handle and no actuator/executor capability. The network transport, admission gate, internal event routing, and physical authority remain separate layers.

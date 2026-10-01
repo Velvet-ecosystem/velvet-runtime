@@ -3,8 +3,8 @@
 This module assembles the event bus, receipt validator, event enforcer,
 hardened publishing callable, optional self-health speech bridge, optional
 speech-expression egress, and one inert advisory-brain presence probe. The
-brain receives no runtime references and is never attached. Interface lifecycle
-activation occurs only after continuity and secure boot complete.
+public Runtime surface remains deliberately tiny. Sensor-fabric and remote
+sensor-LAN services are activated later through a private post-secure-boot path.
 """
 
 import os
@@ -13,8 +13,25 @@ from velvet_logging.logger import get_logger
 from receipts.validator import JsonlReceiptValidator
 from services.runtime_maintenance import configure_speech_egress
 from services.safe_publish import make_safe_publish
+from services.sensor_fabric_event_bridge import attach_sensor_fabric_event_bridge
+from services.sensor_lan_ingress import LAN_SENSOR_EVENT_TYPES
 
 logger = get_logger("velvet.wiring")
+
+
+class _PrivateRuntimeState:
+    """Runtime-only references that must never enter the public runtime dict."""
+
+    __slots__ = ("bus", "enforcer", "sensor_fabric_bridge", "sensor_lan_publish")
+
+    def __init__(self, bus, enforcer):
+        self.bus = bus
+        self.enforcer = enforcer
+        self.sensor_fabric_bridge = None
+        self.sensor_lan_publish = None
+
+
+_PRIVATE_RUNTIME_STATE = None
 
 
 def _attach_self_health_speech(bus, enforcer) -> bool:
@@ -132,8 +149,53 @@ def _execution_receipts_path() -> str:
     ).strip() or "receipts/receipts.jsonl"
 
 
+def _sensor_lan_publisher(enforcer):
+    """Build a narrow publisher for already-authenticated sensor LAN evidence."""
+
+    def publish_sensor_lan(*, event_type, payload, node_id):
+        if event_type not in LAN_SENSOR_EVENT_TYPES:
+            raise ValueError("sensor LAN publisher accepts sensor evidence only")
+        if not isinstance(node_id, str) or not node_id.strip():
+            raise ValueError("sensor LAN node_id must be non-empty text")
+        if not isinstance(payload, dict):
+            raise TypeError("sensor LAN payload must be a dict")
+        return enforcer.publish(
+            event_type=event_type,
+            payload=dict(payload),
+            source="sensor-lan:%s" % node_id.strip(),
+        )
+
+    return publish_sensor_lan
+
+
+def activate_sensor_services():
+    """Activate sensor EventBus intake after continuity and secure boot pass.
+
+    Returns only the narrow authenticated sensor-LAN publishing callable. The
+    EventBus, EventEnforcer, and SensorFabric bridge remain private to Runtime.
+    Repeated activation is idempotent for the current Runtime instance.
+    """
+
+    state = _PRIVATE_RUNTIME_STATE
+    if state is None:
+        raise RuntimeError("build_runtime must complete before sensor services activate")
+
+    if state.sensor_lan_publish is not None:
+        return state.sensor_lan_publish
+
+    state.sensor_fabric_bridge = attach_sensor_fabric_event_bridge(state.bus)
+    state.sensor_lan_publish = _sensor_lan_publisher(state.enforcer)
+    logger.info(
+        "[BOOT] Sensor fabric intake activated after secure boot. "
+        "Evidence remains non-authorizing."
+    )
+    return state.sensor_lan_publish
+
+
 def build_runtime() -> dict:
     """Assemble and return the mandatory Velvet runtime core."""
+
+    global _PRIVATE_RUNTIME_STATE
 
     logger.info("[BOOT] Building mandatory Velvet runtime core...")
 
@@ -162,6 +224,10 @@ def build_runtime() -> dict:
 
     safe_publish = make_safe_publish(enforcer)
     logger.info("[BOOT] Hardened safe_publish callable built.")
+
+    # Keep bus/enforcer available only to trusted Runtime boot wiring. The public
+    # runtime object intentionally remains the long-standing two-key interface.
+    _PRIVATE_RUNTIME_STATE = _PrivateRuntimeState(bus, enforcer)
 
     _attach_self_health_speech(bus, enforcer)
     configure_speech_egress(_attach_speech_expression_egress(bus))
