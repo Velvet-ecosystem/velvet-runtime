@@ -102,6 +102,35 @@ class SensorLanClientLoopbackTests(unittest.TestCase):
         finally:
             server.close()
 
+    def test_tcp_send_success_does_not_claim_runtime_admission(self):
+        server, published = self._server()
+        try:
+            address = server.bound_address
+            self.assertIsNotNone(address)
+            client = SensorLanTcpClient(
+                address[0],
+                address[1],
+                node_id="velour",
+                key=b"wrong-key-material-for-testing-only"[:32],
+                session_id="boot-untrusted",
+            )
+            result = self._serve_and_send(
+                server,
+                lambda: client.send_observation(
+                    _payload(), sent_at=123.0, message_id="obs-rejected"
+                ),
+            )
+
+            # TCP completed, but the receiver rejected the HMAC.
+            # A local send result is not evidence of Runtime admission.
+            self.assertEqual(result.message_id, "obs-rejected")
+            self.assertEqual(result.sequence, 0)
+            self.assertEqual(server.accepted_count, 0)
+            self.assertEqual(server.rejected_count, 1)
+            self.assertEqual(published, [])
+        finally:
+            server.close()
+
     def test_client_sequence_increases_across_event_families(self):
         server, published = self._server()
         try:
