@@ -14,6 +14,7 @@ The key file contains only this node's hex-encoded HMAC key and should be mode
 """
 
 import argparse
+import time
 
 from services.sensor_lan_client import SensorLanTcpClient, load_sensor_lan_sender_key
 
@@ -49,26 +50,31 @@ def main():
             "read_only": True,
         }
     )
+    lifecycle_at = time.time()
     lifecycle = client.send_lifecycle(
         {
             "sensor_id": sensor_id,
             "sensor_family": "diagnostic",
             "state": "ready",
-            "occurred_at": capabilities.sent_at,
+            "occurred_at": lifecycle_at,
             "reasons": [],
             "calibration_id": None,
             "status": "evidence-only",
             "read_only": True,
         }
     )
+    # Synthetic heartbeat generated on this node. The 'received' field is
+    # sender-local adapter receipt, not a Founder/Runtime admission timestamp.
+    measured_at = time.time()
+    sender_received_at = time.time()
     observation = client.send_observation(
         {
             "schema": "velvet.sensor-envelope",
             "version": "0.1.0",
             "sensor": {"id": sensor_id, "family": "diagnostic"},
             "time": {
-                "measurement": lifecycle.sent_at,
-                "received": lifecycle.sent_at,
+                "measurement": measured_at,
+                "received": sender_received_at,
                 "sync_state": "unknown",
             },
             "frame": {
@@ -94,6 +100,7 @@ def main():
     print("sent lifecycle sequence %d" % lifecycle.sequence)
     print("sent observation sequence %d" % observation.sequence)
     print("session %s" % observation.session_id)
+    print("Note: diagnostic timestamps are sender-local, with unknown clock synchronization.")
     print("Note: v0.1 transmission success is not a Runtime admission acknowledgement.")
 
 
