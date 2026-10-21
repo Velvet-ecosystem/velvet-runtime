@@ -62,6 +62,75 @@ The v0.1 listener is intentionally single-worker and bounded. It does not create
 
 There is no generic remote EventBus and no remote procedure-call surface on this port.
 
+## Reference sender
+
+`services.sensor_lan_client.SensorLanTcpClient` is the small reference sender for remote Velvet compute nodes. It creates a fresh random session ID when one is not supplied, reserves strictly increasing sequence numbers, signs the application message, adds the v0.1 TCP length prefix, sends one message, and closes the connection.
+
+The client exposes helpers for capability, lifecycle, and observation events. It accepts only the three sensor event families allowed by the receiver.
+
+There is deliberately no automatic retry in v0.1. Once a sequence number is reserved it is never reused within that client session, even if TCP transmission fails. This avoids accidentally reusing a sequence after an ambiguous partial delivery. Gaps are valid because Runtime requires increasing sequence numbers, not contiguous ones.
+
+A successful client return means the complete frame was handed to the local TCP stack/peer connection. It is **not** a Runtime admission acknowledgement. The receiver does not return an application ACK in v0.1.
+
+A sender node normally stores only its own HMAC key. `load_sensor_lan_sender_key()` reads a single hex-encoded key from a private regular file and rejects group/world-readable permissions. The receiving Runtime separately keeps the node-ID-to-key map.
+
+A software smoke test is provided in `examples/sensor_lan_sender_example.py`. With the Runtime listener already enabled and reachable, a remote node can run:
+
+```text
+python examples/sensor_lan_sender_example.py \
+  --host 10.42.0.1 \
+  --port 43191 \
+  --node-id velour \
+  --key-file /etc/velvet/sensor-lan.key
+```
+
+The example sends a capability declaration, a ready lifecycle event, and one read-only diagnostic observation. It does not request physical authority.
+
+## First Founder/Luckfox hardware smoke test (read-only)
+
+This is a commissioning procedure, not proof of a deployed service. The listener
+must remain disabled by default, with physical outputs and vehicle-control
+adapters disabled throughout the test.
+
+1. On Founder, confirm continuity verification and secure provisioning have
+   passed. Configure the listener to bind **only** to the selected Velvet LAN
+   interface, with the intended node ID and a private per-node HMAC key.
+   Protect the key file and do not copy receiver-side key maps to the sender.
+2. On one Luckfox node, run the reference sender above with that node's matching
+   private key. It submits one capability declaration, one ready lifecycle event
+   and one synthetic diagnostic observation, all read-only.
+3. Verify **on Founder** that the listener's accepted count increased by three
+   without unexpected rejections. Confirm all three authenticated events passed
+   through Runtime's enforced event intake, and the sensor fabric shows the
+   declared diagnostic sensor and its latest observation. Record the node ID,
+   tested source commits, event IDs and results without recording secrets.
+4. In an isolated negative test, use a deliberately incorrect sender key.
+   The listener must reject the event, leave the accepted count unchanged,
+   increase the rejected count, and produce no admitted observation.
+5. Disconnect the sender, verify Runtime stays healthy, and document whether
+   the relevant diagnostic source degrades as expected. Disable the listener
+   afterward unless continued testing is explicitly authorized.
+
+`accepted_count` and `rejected_count` are in-process listener properties,
+**not** a remote administrative API. Use an approved local diagnostic/test
+harness or other verified receiver-side evidence. If receiver-side admission
+cannot be observed, record the bench test as **unverified**, not passed. The
+sender's successful TCP return only means its bytes were handed to the
+connection; v0.1 has no Runtime admission acknowledgement.
+
+### Timestamp interpretation
+
+The example's heartbeat is generated on the **sender**. Its
+`time.measurement` and `time.received` are two sender-local clock readings:
+generation of the synthetic observation and its local software receipt.
+The example sets `sync_state=unknown`. Neither field proves the actual time
+Founder admitted, received or published the event. The sender's envelope
+`sent_at` is a third transport timestamp.
+
+Until clock synchronization, time-source identity and uncertainty have been
+qualified, do not treat these times as synchronized or calculate cross-node
+latency, ordering or freshness for driving/safety decisions from them.
+
 ## Runtime binding
 
 After HMAC and replay admission, `SensorLanRuntimeBinding` sends only the three admitted sensor event families through a narrow Runtime publisher. Runtime assigns the internal event source as `sensor-lan:<authenticated-node-id>` and publishes through `EventEnforcer` rather than exposing `EventBus` to the network layer.
@@ -113,6 +182,7 @@ This envelope is intended for normalized observations, compact tracks, lifecycle
 
 ```text
 remote Velvet node
+  -> SensorLanTcpClient
   -> TCP length-prefixed frame
   -> complete authenticated message body
   -> SensorLanIngress
