@@ -4,6 +4,9 @@ velvet-runtime: services/safe_publish.py
 Hardened safe_publish callable for use across the Velvet runtime.
 
 SECURITY MODEL:
+  Generic ACTUATION publishing is unconditionally rejected, even with a known
+  receipt or an older delegate. Execution belongs to the Runtime pipeline.
+
   _SafePublish is a callable class (not a function closure) that wraps
   enforcer.publish. It provides structural hardening against the most
   common Python-level bypass attempts:
@@ -71,6 +74,13 @@ class _SafePublish:
         payload: dict,
         receipt_id: str = None,
     ) -> None:
+        # Deny here even when an older Event Protocol is installed. Receipt
+        # existence is evidence linkage, not execution authorization.
+        if isinstance(event_type, str) and event_type.strip().upper() == "ACTUATION":
+            raise ValueError(
+                "ACTUATION is not accepted by generic publishing; "
+                "submit an intent through the Velvet Runtime Court and approved executor"
+            )
         self.__fn(  # noqa: SLF001
             event_type=event_type,
             payload=payload,
