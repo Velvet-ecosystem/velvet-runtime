@@ -82,10 +82,9 @@ class StubEventEnforcer:
 
 
 def _make_safe_publish(enforcer) -> callable:
-    """Mirror of runtime_wiring._make_safe_publish for test use."""
-    def safe_publish(event_type: str, payload: dict, receipt_id: str = None) -> None:
-        enforcer.publish(event_type=event_type, payload=payload, receipt_id=receipt_id)
-    return safe_publish
+    """Exercise the production module boundary, including older enforcers."""
+    from services.safe_publish import make_safe_publish
+    return make_safe_publish(enforcer)
 
 
 # ------------------------------------------------------------------ #
@@ -392,27 +391,14 @@ class TestDummyModule(unittest.TestCase):
         self.assertNotIn("bus", params)
         self.assertNotIn("runtime", params)
 
-    def test_dummy_module_actuation_without_receipt_fails(self):
-        """
-        Actuation attempt with no receipt_id must be rejected by safe_publish.
-        """
+    def test_dummy_module_only_publishes_observation(self):
         mod = self._load_dummy()
         bus = StubEventBus()
-        enforcer = StubEventEnforcer(bus=bus, receipt_validator=lambda r: False)
-        rejected = []
-
-        def strict_publish(event_type, payload, receipt_id=None):
-            if event_type == "ACTUATION" and not receipt_id:
-                rejected.append("no_receipt")
-                raise ValueError("ACTUATION requires receipt_id")
-            enforcer.publish(event_type=event_type, payload=payload, receipt_id=receipt_id)
-
-        mod.register(publish=strict_publish)
-        # dummy_module emits ACTUATION with _TEST_RECEIPT_ID on register.
-        # No rejection expected here — it provides a receipt_id.
-        # This test verifies the publish signature itself handles missing receipt_id.
-        with self.assertRaises(ValueError):
-            strict_publish("ACTUATION", {"action": "test"}, receipt_id=None)
+        safe_pub = _make_safe_publish(StubEventEnforcer(bus=bus, receipt_validator=lambda _: True))
+        mod.register(publish=safe_pub)
+        self.assertEqual(len(bus._published), 1)
+        self.assertEqual(bus._published[0]["event_type"], "TEST_PING")
+        self.assertIs(bus._published[0]["payload"]["actuation_performed"], False)
 
     def test_dummy_module_actuation_with_invalid_receipt_fails(self):
         """ACTUATION with unrecognized receipt_id must be rejected."""
@@ -425,17 +411,17 @@ class TestDummyModule(unittest.TestCase):
 
         self.assertEqual(len(bus._published), 0)
 
-    def test_dummy_module_actuation_with_valid_receipt_passes(self):
-        """ACTUATION with a known-valid receipt_id must pass through enforcer."""
+    def test_dummy_module_actuation_with_known_receipt_is_rejected(self):
+        """Receipt existence never permits generic module actuation."""
         safe_pub, bus, tmp_path = _make_enforcer_with_receipt("dummy-receipt-001")
         try:
-            safe_pub(
-                event_type="ACTUATION",
-                payload={"action": "dummy_test_action"},
-                receipt_id="dummy-receipt-001",
-            )
-            self.assertEqual(len(bus._published), 1)
-            self.assertEqual(bus._published[0]["event_type"], "ACTUATION")
+            with self.assertRaises(ValueError):
+                safe_pub(
+                    event_type="ACTUATION",
+                    payload={"action": "dummy_test_action"},
+                    receipt_id="dummy-receipt-001",
+                )
+            self.assertEqual(bus._published, [])
         finally:
             os.unlink(tmp_path)
 
@@ -470,13 +456,13 @@ class TestEnforcementPath(unittest.TestCase):
 
         self.assertEqual(len(bus._published), 0)
 
-    def test_actuation_with_valid_receipt_is_accepted(self):
-        """ACTUATION with known-valid receipt_id passes through enforcer."""
+    def test_actuation_with_known_receipt_is_rejected(self):
+        """Receipt linkage is never an execution capability."""
         safe_pub, bus, tmp_path = _make_enforcer_with_receipt("valid-001")
         try:
-            safe_pub("ACTUATION", {"action": "test"}, receipt_id="valid-001")
-            self.assertEqual(len(bus._published), 1)
-            self.assertEqual(bus._published[0]["receipt_id"], "valid-001")
+            with self.assertRaises(ValueError):
+                safe_pub("ACTUATION", {"action": "test"}, receipt_id="valid-001")
+            self.assertEqual(bus._published, [])
         finally:
             os.unlink(tmp_path)
 
