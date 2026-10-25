@@ -17,6 +17,8 @@ STUBS:
   velvet-event-protocol without requiring it to be installed.
 """
 
+from __future__ import annotations
+
 import json
 import os
 import sys
