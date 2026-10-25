@@ -136,30 +136,15 @@ class BodyStateBridgeTests(unittest.TestCase):
                 bridge.publish(second)
 
     def test_kernel_listen_only_guard(self):
-        def good_runner(*args, **kwargs):
-            return SimpleNamespace(
-                returncode=0,
-                stdout=(
-                    "can0: <NOARP,UP,LOWER_UP> state UP\n"
-                    "can state ERROR-ACTIVE listen-only on"
-                ),
-                stderr="",
-            )
-
-        self.assertIn(
-            "listen-only on",
-            verify_kernel_listen_only("can0", good_runner),
-        )
-
-        def bad_runner(*args, **kwargs):
-            return SimpleNamespace(
-                returncode=0,
-                stdout="can0: <NOARP,UP> state UP",
-                stderr="",
-            )
-
-        with self.assertRaises(BodyStateBridgeError):
-            verify_kernel_listen_only("can0", bad_runner)
+        from unittest.mock import patch
+        from types import SimpleNamespace
+        evidence = SimpleNamespace(to_dict=lambda: {"listen_only": True, "is_up": True})
+        with patch("velvet_vehicle_can.socketcan_link.inspect_socketcan_link", return_value=evidence) as verify:
+            self.assertTrue(json.loads(verify_kernel_listen_only("can0"))["listen_only"])
+            verify.assert_called_once_with("can0", runner=None)
+        with patch("velvet_vehicle_can.socketcan_link.inspect_socketcan_link", side_effect=ValueError("unsafe")):
+            with self.assertRaises(BodyStateBridgeError):
+                verify_kernel_listen_only("can0")
 
 
 if __name__ == "__main__":

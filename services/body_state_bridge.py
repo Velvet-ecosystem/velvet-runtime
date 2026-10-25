@@ -248,42 +248,14 @@ def validate_body_record(record: Mapping[str, Any]) -> Mapping[str, Any]:
     return _copy_mapping(record)
 
 
-def verify_kernel_listen_only(
-    channel: str,
-    runner: Any = subprocess.run,
-) -> str:
-    """Fail closed unless Linux reports an UP CAN link in listen-only mode."""
-
-    if not isinstance(channel, str) or not _CHANNEL_PATTERN.fullmatch(channel):
-        raise BodyStateBridgeError("invalid CAN channel")
+def verify_kernel_listen_only(channel: str, runner: Any = None) -> str:
+    """Delegate all kernel posture parsing to the vehicle-CAN package."""
     try:
-        result = runner(
-            ["ip", "-details", "link", "show", channel],
-            text=True,
-            capture_output=True,
-            timeout=3,
-            check=False,
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as exc:
-        raise BodyStateBridgeError("cannot verify CAN interface: %s" % exc)
-
-    output = ((result.stdout or "") + "\n" + (result.stderr or "")).strip()
-    lowered = output.lower()
-    if result.returncode != 0:
-        raise BodyStateBridgeError(
-            "CAN interface verification failed: %s" % output
-        )
-    if (
-        "state up" not in lowered
-        and ",up," not in lowered
-        and "<up," not in lowered
-    ):
-        raise BodyStateBridgeError("CAN interface is not UP")
-    if "listen-only on" not in lowered:
-        raise BodyStateBridgeError(
-            "CAN interface is not in kernel listen-only mode"
-        )
-    return output
+        from velvet_vehicle_can.socketcan_link import inspect_socketcan_link
+        evidence = inspect_socketcan_link(channel, runner=runner)
+        return json.dumps(evidence.to_dict(), sort_keys=True)
+    except (ImportError, ValueError, OSError) as exc:
+        raise BodyStateBridgeError("cannot verify CAN interface: %s" % exc) from exc
 
 
 def _reject_authority(value: Any, path: str = "record") -> None:
