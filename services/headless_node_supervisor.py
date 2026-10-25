@@ -56,8 +56,8 @@ class HeadlessNodeConfig:
     heartbeat_seconds: float = DEFAULT_HEARTBEAT_SECONDS
     storage_paths: Tuple[StoragePathSpec, ...] = ()
     extra_resources: Tuple[ResourceAdvertisement, ...] = ()
-    body_verified: bool = True
-    continuity_verified: bool = True
+    body_verified: bool = False
+    continuity_verified: bool = False
 
     def __post_init__(self) -> None:
         for name, value in (
@@ -102,9 +102,9 @@ class HeadlessNodeConfig:
             ),
             storage_paths=_storage_specs(raw.get("storage_paths", ())),
             extra_resources=_extra_resources(raw.get("extra_resources", ())),
-            body_verified=_boolean(raw.get("body_verified", True), "body_verified"),
+            body_verified=_boolean(raw.get("body_verified", False), "body_verified"),
             continuity_verified=_boolean(
-                raw.get("continuity_verified", True), "continuity_verified"
+                raw.get("continuity_verified", False), "continuity_verified"
             ),
         )
 
@@ -137,8 +137,14 @@ class HeadlessNodeSupervisor:
             "body_id": self.config.body_id,
             "organ": self.config.organ,
             "observed_at": float(advertisement.observed_at),
-            "body_verified": advertisement.body_verified,
-            "continuity_verified": advertisement.continuity_verified,
+            "boot_id": advertisement.boot_id,
+            "body_verified": False,
+            "continuity_verified": False,
+            "verification": {
+                "state": "unverified",
+                "configured_body_assertion": self.config.body_verified,
+                "configured_continuity_assertion": self.config.continuity_verified,
+            },
             "resources": [_resource_to_dict(item) for item in resources],
             **_FLAGS,
         }

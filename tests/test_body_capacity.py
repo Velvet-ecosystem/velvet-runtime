@@ -29,6 +29,9 @@ from services.distributed_work_coordinator import (
 BODY_ID = "velvet-founder-body"
 
 
+from tests.resource_verification_fixture import SimulationResourceRegistry as NodeResourceRegistry
+
+
 def node(node_id, organ, tier=NodeTier.SPECIALIST_LINUX, load=0.2):
     return NodeAdvertisement(
         node_id=node_id,
@@ -242,7 +245,8 @@ def test_attached_drive_change_can_trigger_runtime_handoff_without_board_rules()
 
 
 def test_unverified_resource_advertisement_is_rejected():
-    registry = NodeResourceRegistry(body_id=BODY_ID)
+    from services.body_capacity import NodeResourceRegistry as RealRegistry
+    registry = RealRegistry(body_id=BODY_ID)
     result = registry.register(
         NodeResourceAdvertisement(
             node_id="unknown",
@@ -254,4 +258,4 @@ def test_unverified_resource_advertisement_is_rejected():
     )
 
     assert not result.accepted
-    assert "body-not-verified" in result.reasons
+    assert "node-body-boot-proof-unavailable-or-stale" in result.reasons

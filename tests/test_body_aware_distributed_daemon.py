@@ -262,5 +262,6 @@ def test_specialist_resource_ad_is_rejected_until_normal_node_is_registered(tmp_
 
     accepted = daemon.resource_service.register(resource_ad, now=now)
 
-    assert accepted.decision.accepted
-    assert accepted.capacity.node_ids == ("velour-lyra-1",)
+    # A functional heartbeat is still self-report, not independent boot proof.
+    assert not accepted.decision.accepted
+    assert accepted.capacity.node_ids == ()

@@ -19,6 +19,9 @@ from services.body_resource_transport import (
 BODY_ID = "velvet-body"
 
 
+from tests.resource_verification_fixture import SimulationResourceRegistry as NodeResourceRegistry
+
+
 def resource(available=700_000_000_000, resource_id="storage.library"):
     return ResourceAdvertisement(
         resource_id=resource_id,

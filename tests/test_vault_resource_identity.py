@@ -11,6 +11,9 @@ from services.headless_node_supervisor import _storage_specs as headless_specs
 from tests.filesystem_fixture import FilesystemFixture, UUID
 
 
+from tests.resource_verification_fixture import SimulationResourceRegistry as NodeResourceRegistry
+
+
 class VaultResourceIdentityTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
