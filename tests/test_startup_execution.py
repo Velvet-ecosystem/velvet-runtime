@@ -41,16 +41,19 @@ with tempfile.TemporaryDirectory() as directory:
     with patch.object(bootstrap,'ROOT',root), patch.object(bootstrap,'DEV_ROOT',state), patch.object(bootstrap,'collect_surface_identity',return_value=surface):
         assert bootstrap.main() == 0
     env = load_development_environment(root / '.velvet-dev/env.sh')
-    env.update({'VELVET_BODY_SNAPSHOT_PATH':str(root/'body.json'), 'VELVET_BODY_JOURNAL_PATH':str(root/'body.jsonl'),
+    env.update({'VELVET_RUNTIME_STATUS_PATH':str(root/'runtime-status.json'), 'VELVET_BODY_SNAPSHOT_PATH':str(root/'body.json'), 'VELVET_BODY_JOURNAL_PATH':str(root/'body.jsonl'),
                 'VELVET_CONVERSATION_SOCKET_ENABLED':'false','VELVET_SENSOR_LAN_ENABLED':'false',
                 'VELVET_AUDIO_SPEECH_ENDPOINT':'','VELVET_PHYSICAL_AUTHORITY':'disabled'})
     (root/'modules').mkdir()
     server = Mock()
-    with patch.dict(os.environ, env), patch('services.continuity_activation.collect_surface_identity',return_value=surface), patch.object(runtime.signal,'signal'), patch.object(runtime,'_SHUTDOWN',False), patch.object(runtime,'_optional_conversation_server',return_value=server), patch.object(runtime,'_optional_sensor_lan_service',return_value=None), patch.object(socket,'socket',side_effect=AssertionError('no real socket/device permitted')), patch.object(runtime.time,'sleep',side_effect=lambda _:runtime._handle_signal(signal.SIGTERM,None)):
+    with patch.dict(os.environ, env), patch('services.continuity_activation.collect_surface_identity',return_value=surface), patch.object(runtime,'_SHUTDOWN',False), patch.object(runtime,'_optional_conversation_server',return_value=server), patch.object(runtime,'_optional_sensor_lan_service',return_value=None), patch.object(socket,'socket',side_effect=AssertionError('no real socket/device permitted')), patch.object(runtime.time,'sleep',side_effect=lambda _:os.kill(os.getpid(), signal.SIGTERM)):
         os.chdir(root)
         try: runtime.main()
         except SystemExit as exc: assert exc.code == 0
         server.close.assert_called_once()
+        import json
+        status = json.loads((root/'runtime-status.json').read_text())
+        assert status['state'] == 'stopped' and status['physical_control'] is False
         context = load_configured_identity_context()
         assert context.capability_context.actuation_granted is False
         assert (state/'receipts/continuity.log').stat().st_size > 0
