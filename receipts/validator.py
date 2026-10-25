@@ -3,6 +3,10 @@ velvet-runtime: receipts/validator.py
 ======================================
 JSONL-backed receipt validator for the Velvet runtime.
 
+This lookup proves only that a receipt identifier is present. It is not an
+execution authorization verifier. Generic publishing rejects ACTUATION even
+when this lookup succeeds; consequential work uses Runtime's approved executor.
+
 HARDENING DOCTRINE (Phase B):
 - Fails CLOSED on every error condition — no exceptions propagate to caller.
 - Explicitly logs every validation failure with reason.

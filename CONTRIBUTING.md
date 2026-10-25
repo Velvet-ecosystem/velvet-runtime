@@ -13,7 +13,7 @@ All contributions must comply with Velvet's architectural doctrine:
 
 - **Offline-first.** No cloud dependencies introduced into the runtime path.
 - **Brain proposes, core decides.** No advisory layer receives execution capability.
-- **No actuation without authorization.** The enforcer and receipt validator are not optional.
+- **No actuation without authorization.** Consequential work uses Runtime Court, signed capability verification, safety, persistent replay consumption and approved execution.
 - **Receipt-backed enforcement.** The receipt store is not bypassable.
 - **Regression resistance.** See below.
 
@@ -45,7 +45,8 @@ This means:
 Modules must:
 - Expose `register(publish)` with `publish` as the sole parameter.
 - Use only `publish(event_type, payload, receipt_id)` to emit events.
-- Provide a valid `receipt_id` for all `ACTUATION` events.
+- Never emit `ACTUATION`; generic publishing rejects it regardless of receipt ID.
+- Submit consequential requests through the existing Runtime intent gateway; receipt IDs link evidence only.
 - Not attempt to access `bus`, `enforcer`, or runtime internals through
   any path, including closure introspection or module imports.
 

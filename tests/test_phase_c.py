@@ -493,9 +493,9 @@ class TestMaliciousModuleRuntimeBehavior(unittest.TestCase):
         finally:
             self._cleanup(tmp_dir, rtmp)
 
-    def test_actuation_with_valid_receipt_passes_from_module(self):
+    def test_actuation_with_known_receipt_is_rejected_from_module(self):
         """
-        A module emitting ACTUATION with a valid receipt_id must succeed.
+        A module cannot turn a known receipt into execution authority.
         """
         source = """
             _result = None
@@ -512,9 +512,8 @@ class TestMaliciousModuleRuntimeBehavior(unittest.TestCase):
         )
         try:
             mod = sys.modules.get("attack_mod_behavior")
-            self.assertEqual(mod._result, "passed")
-            self.assertEqual(len(bus._published), 1)
-            self.assertEqual(bus._published[0]["event_type"], "ACTUATION")
+            self.assertEqual(mod._result[0], "rejected")
+            self.assertEqual(bus._published, [])
         finally:
             self._cleanup(tmp_dir, rtmp)
 
@@ -1008,16 +1007,15 @@ class TestEventFlowIntegrity(unittest.TestCase):
 
         self.assertEqual(len(bus._published), 0)
 
-    def test_valid_actuation_reaches_bus_publish(self):
+    def test_known_receipt_cannot_publish_actuation(self):
         """
-        A valid ACTUATION event must reach bus._publish after passing
-        through the enforcer and receipt validation.
+        A known receipt must not permit ACTUATION through generic publishing.
         """
         sp, bus, _, tmp_path = _make_full_stack("flow-test-001")
         try:
-            sp("ACTUATION", {"action": "x"}, receipt_id="flow-test-001")
-            self.assertEqual(len(bus._published), 1)
-            self.assertEqual(bus._published[0]["receipt_id"], "flow-test-001")
+            with self.assertRaises(ValueError):
+                sp("ACTUATION", {"action": "x"}, receipt_id="flow-test-001")
+            self.assertEqual(bus._published, [])
         finally:
             if tmp_path:
                 os.unlink(tmp_path)

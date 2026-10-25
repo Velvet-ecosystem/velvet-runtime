@@ -41,30 +41,24 @@ inward. There will be no return path that grants execution capability.
 
 ## No Actuation Without Authorization
 
-Every actuation event must carry a `receipt_id`. Every `receipt_id` must be
-validated against the receipt store before the event reaches the bus.
+Generic publishing rejects `ACTUATION`, including events with existing receipts.
+A receipt records a decision or outcome; it is not execution permission.
 
-There are no exceptions. There are no administrative overrides. There are no
-`dry_run` modes that skip validation. The enforcer fails closed on every
-ambiguous case.
-
-This is not a security feature added on top of the system. It is the shape
-of the system.
+Consequential requests use the existing Runtime Court, signed capability token,
+matching executor and safety gate, persistent replay consumption and execution
+receipts. No simulation flag or source allowlist can enable generic actuation.
 
 ---
 
 ## Receipt-Backed Enforcement
 
-The receipt store is the chain of custody for every authorized action.
+Execution receipts preserve the chain of custody. The approved executor persists
+its start receipt and consumes the verified token before invoking its handler;
+final receipts preserve success, failure or uncertain completion.
 
-Receipts are append-only. They are hash-chained. They are validated before
-actuation and auditable after. A system that cannot produce a receipt for an
-action is a system that cannot explain itself.
-
-The validator reads the store on every call. It does not cache optimistically.
-It does not trust in-memory state. It does not skip validation under load.
-
-If the store is unreadable, actuation fails. This is correct behavior.
+`JsonlReceiptValidator` is an observational ID lookup, not an authorization
+verifier. Its success cannot enable publishing or execution. Missing required
+execution persistence keeps the executor closed.
 
 ---
 
@@ -108,8 +102,8 @@ will — the system itself is the first line of resistance.
 |---|---|
 | Offline-first | No network calls in runtime path; no cloud dependencies |
 | Brain proposes, core decides | Brain receives no bus, enforcer, or publish reference |
-| No actuation without authorization | Enforcer gates all ACTUATION on receipt validation |
-| Receipt-backed enforcement | Validator fails closed; store is append-only and auditable |
+| No actuation without authorization | Generic publishers reject ACTUATION; Runtime verifies capabilities before execution |
+| Receipt-backed enforcement | Executor requires start persistence and replay consumption; outcomes remain auditable |
 | Regression resistance | Tests, static scans, and loader rejection enforce boundaries structurally |
 
 These principles are not independently optional. They form a single coherent
