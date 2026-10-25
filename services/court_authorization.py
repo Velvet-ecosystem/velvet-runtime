@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Dict
 
 from services.court_authority import AuthorityResolution, resolve_authority
 from services.court_intent import Intent, validate_intent
@@ -23,7 +23,7 @@ from services.court_reasons import CourtReason, reason_for_state
 from services.court_token import CapabilityToken, issue_token
 
 
-ReceiptSink = Callable[[dict[str, Any]], Any]
+ReceiptSink = Callable[[Dict[str, Any]], Any]
 _CONTEXT_BINDINGS = (
     ("profile_id", "profile"),
     ("session_id", "session"),

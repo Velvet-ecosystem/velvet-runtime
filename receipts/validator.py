@@ -31,6 +31,8 @@ THREAD SAFETY:
   live-updated store. A read cache may be added if profiling warrants it.
 """
 
+from __future__ import annotations
+
 import json
 import os
 import re
