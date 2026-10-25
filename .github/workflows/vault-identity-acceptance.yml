@@ -39,6 +39,9 @@ jobs:
           python -m compileall -q velvet_cli.py services scripts tools tests
           python scripts/validate_up2_manifest.py
           python -m pytest tests/test_filesystem_identity.py tests/test_vault_resource_identity.py tests/test_body_capacity.py tests/test_headless_node_supervisor.py tests/test_body_aware_distributed_daemon.py tests/test_python38_syntax.py tests/test_up2_dependency_manifest.py -q -ra --junitxml=vault-identity-results.xml
+      - name: Install transactional receipt snapshot contract
+        run: python -m pip install 'git+https://github.com/Velvet-ecosystem/velvet-receipts.git@56e4b305cbb6189ebfb93249f0a73a8a317d8a4b'
+
       - name: Complete supported Runtime suite
         if: matrix.python-version != '3.8'
         run: python -m pytest tests -q -ra --junitxml=vault-identity-results.xml

@@ -70,6 +70,9 @@ jobs:
       - name: Install disposable startup-test dependencies
         run: python -m pip install -r requirements-test-startup.txt
 
+      - name: Install transactional receipt snapshot contract
+        run: python -m pip install 'git+https://github.com/Velvet-ecosystem/velvet-receipts.git@56e4b305cbb6189ebfb93249f0a73a8a317d8a4b'
+
       - name: Run complete test suite
         id: pytest
         continue-on-error: true

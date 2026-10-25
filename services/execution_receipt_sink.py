@@ -57,6 +57,10 @@ class ExecutionReceiptLedger:
         self.filepath = Path(filepath).expanduser().resolve()
         self.filepath.parent.mkdir(parents=True, exist_ok=True)
         self.logger = ReceiptLogger(filepath=str(self.filepath))
+        if not callable(getattr(self.logger, 'read_entries', None)):
+            raise RuntimeReceiptLedgerError(
+                'transactional velvet-receipts with verified snapshots is required before startup'
+            )
         self._runtime_receipt_from_envelope = runtime_receipt_from_envelope
         self._memory_retrieval_receipt_from_envelope = (
             memory_retrieval_receipt_from_envelope
@@ -214,32 +218,16 @@ class ExecutionReceiptLedger:
         return linked
 
     def _load_entries(self) -> list[dict[str, Any]]:
-        entries: list[dict[str, Any]] = []
+        """Obtain validated entries under the writer's shared-lock protocol."""
+        read = getattr(self.logger, "read_entries", None)
+        if not callable(read):
+            raise RuntimeReceiptLedgerError("transactional velvet-receipts read_entries support is required")
         try:
-            with self.filepath.open("r", encoding="utf-8") as handle:
-                for line_number, line in enumerate(handle, start=1):
-                    text = line.strip()
-                    if not text:
-                        continue
-                    try:
-                        entry = json.loads(text)
-                    except json.JSONDecodeError as exc:
-                        raise RuntimeReceiptLedgerError(
-                            "Runtime receipt log contains invalid JSON at line "
-                            f"{line_number}: {exc.msg}"
-                        ) from exc
-                    if not isinstance(entry, dict):
-                        raise RuntimeReceiptLedgerError(
-                            "Runtime receipt log entry at line "
-                            f"{line_number} is not a JSON object"
-                        )
-                    entries.append(entry)
-        except FileNotFoundError:
-            return []
-        except OSError as exc:
-            raise RuntimeReceiptLedgerError(
-                f"Runtime receipt log could not be read: {exc}"
-            ) from exc
+            entries = read()
+        except Exception as exc:
+            raise RuntimeReceiptLedgerError("verified receipt snapshot unavailable: %s" % exc) from exc
+        if not isinstance(entries, list) or any(not isinstance(row, dict) for row in entries):
+            raise RuntimeReceiptLedgerError("receipt snapshot must contain JSON objects")
         return entries
 
 

@@ -25,7 +25,14 @@ class TestExecutionReceiptSink(unittest.TestCase):
         )
         logger_instance.verify_chain.return_value = (True, [])
         logger_module = MagicMock()
-        logger_module.ReceiptLogger.return_value = logger_instance
+        def create_logger(filepath):
+            logger_instance.filepath = filepath
+            def snapshot():
+                path = Path(filepath)
+                return [json.loads(line) for line in path.read_text().splitlines() if line.strip()] if path.exists() else []
+            logger_instance.read_entries.side_effect = snapshot
+            return logger_instance
+        logger_module.ReceiptLogger.side_effect = create_logger
         runtime_module = MagicMock()
         memory_module = MagicMock()
         return logger_instance, logger_module, runtime_module, memory_module
@@ -209,6 +216,24 @@ class TestExecutionReceiptSink(unittest.TestCase):
             module = self.load_module()
             with self.assertRaises(RuntimeError):
                 module.make_execution_receipt_sink("/tmp/execution.log")
+
+    def test_old_receipt_package_blocks_sink_construction_before_writes(self):
+        old = SimpleNamespace(log=MagicMock(), verify_chain=lambda: (True, []))
+        with tempfile.TemporaryDirectory() as directory, patch.dict(sys.modules, {
+            'receipt_logger': SimpleNamespace(ReceiptLogger=lambda filepath: old),
+            'runtime_receipts': MagicMock(), 'memory_retrieval_receipt': MagicMock(),
+        }):
+            module = self.load_module()
+            with self.assertRaises(module.RuntimeReceiptLedgerError):
+                module.ExecutionReceiptLedger(Path(directory)/'receipts.jsonl')
+        old.log.assert_not_called()
+
+    def test_old_receipt_lookup_without_atomic_snapshot_is_rejected(self):
+        module = self.load_module()
+        ledger = module.ExecutionReceiptLedger.__new__(module.ExecutionReceiptLedger)
+        ledger.logger = SimpleNamespace(verify_chain=lambda: (True, []))
+        with self.assertRaises(module.RuntimeReceiptLedgerError):
+            ledger.resolve_intent("unseen")
 
 
 if __name__ == "__main__":
