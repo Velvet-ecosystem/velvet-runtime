@@ -29,6 +29,9 @@ from services.resource_reservations import ResourceReservationUnavailable
 MIB = 1024.0 * 1024.0
 
 
+from tests.resource_verification_fixture import SimulationResourceRegistry as NodeResourceRegistry
+
+
 def functional_node(node_id, *, health=1.0):
     return NodeAdvertisement(
         node_id=node_id,

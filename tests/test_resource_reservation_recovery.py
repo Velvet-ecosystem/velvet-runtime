@@ -28,6 +28,9 @@ from services.resource_aware_work_proposals import (
 MIB = 1024.0 * 1024.0
 
 
+from tests.resource_verification_fixture import SimulationResourceRegistry as NodeResourceRegistry
+
+
 def node(node_id, *, heartbeat=10.0):
     return NodeAdvertisement(
         node_id=node_id,

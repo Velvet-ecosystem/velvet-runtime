@@ -29,6 +29,9 @@ MIB = 1024.0 * 1024.0
 GIB = 1024.0 * 1024.0 * 1024.0
 
 
+from tests.resource_verification_fixture import SimulationResourceRegistry as NodeResourceRegistry
+
+
 def node(node_id):
     return NodeAdvertisement(
         node_id=node_id,

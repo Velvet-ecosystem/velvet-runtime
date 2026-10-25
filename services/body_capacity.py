@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import math
 import os
+import time
+import uuid
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -81,16 +83,17 @@ class NodeResourceAdvertisement:
     body_id: str
     observed_at: float
     resources: Tuple[ResourceAdvertisement, ...]
-    body_verified: bool = True
-    continuity_verified: bool = True
+    body_verified: bool = False
+    continuity_verified: bool = False
     authority: str = "none"
+    boot_id: str = ""
 
     def __post_init__(self) -> None:
         _require_text("node_id", self.node_id)
         _require_text("body_id", self.body_id)
         if isinstance(self.observed_at, bool) or not isinstance(self.observed_at, (int, float)):
             raise ValueError("observed_at must be numeric")
-        if float(self.observed_at) < 0.0:
+        if not math.isfinite(float(self.observed_at)) or float(self.observed_at) < 0.0:
             raise ValueError("observed_at cannot be negative")
         if not isinstance(self.resources, tuple):
             raise ValueError("resources must be a tuple")
@@ -171,11 +174,36 @@ class ResourceRegistrationDecision:
 class NodeResourceRegistry:
     """Hold newest verified resource advertisements for one active body."""
 
-    def __init__(self, *, body_id: str) -> None:
+    def __init__(self, *, body_id: str, verification_provider=None,
+                 clock=time.time, max_age_seconds: float = 20.0) -> None:
         _require_text("body_id", body_id)
         self.body_id = _normal(body_id)
         self._lock = RLock()
         self._nodes: Dict[str, NodeResourceAdvertisement] = {}
+        # Receiver-owned proof verification, never a publisher's boolean claim.
+        # No commissioned Riven/node/boot adapter is installed by default.
+        if verification_provider is not None and not callable(verification_provider):
+            raise TypeError("verification_provider must be callable")
+        if not math.isfinite(max_age_seconds) or max_age_seconds <= 0:
+            raise ValueError("max_age_seconds must be finite and positive")
+        self._verification_provider = verification_provider
+        self._clock = clock
+        self._max_age_seconds = max_age_seconds
+
+    def _proof_is_current(self, advertisement) -> bool:
+        try:
+            age = float(self._clock()) - advertisement.observed_at
+            if not math.isfinite(age) or not 0 <= age < self._max_age_seconds:
+                return False
+            if str(uuid.UUID(advertisement.boot_id)) != advertisement.boot_id:
+                return False
+            # This callback must check current independently obtained node/body/
+            # boot proof, including proof expiry/revocation. Wire flags are ignored.
+            return (self._verification_provider is not None and
+                    self._verification_provider(advertisement) is True)
+        except Exception:
+            return False
+
 
     def register(self, advertisement: NodeResourceAdvertisement) -> ResourceRegistrationDecision:
         if not isinstance(advertisement, NodeResourceAdvertisement):
@@ -184,11 +212,10 @@ class NodeResourceRegistry:
         reasons = []
         if _normal(advertisement.body_id) != self.body_id:
             reasons.append("body-binding-mismatch")
-        if not advertisement.body_verified:
-            reasons.append("body-not-verified")
-        if not advertisement.continuity_verified:
-            reasons.append("continuity-not-verified")
+        if not self._proof_is_current(advertisement):
+            reasons.append("node-body-boot-proof-unavailable-or-stale")
         if reasons:
+            self.remove(node_id)
             return ResourceRegistrationDecision(False, "rejected", node_id, tuple(reasons))
         with self._lock:
             current = self._nodes.get(node_id)
@@ -198,7 +225,11 @@ class NodeResourceRegistry:
 
     def get(self, node_id: str) -> Optional[NodeResourceAdvertisement]:
         with self._lock:
-            return self._nodes.get(_normal(node_id))
+            item = self._nodes.get(_normal(node_id))
+            if item is not None and not self._proof_is_current(item):
+                self._nodes.pop(_normal(node_id), None)
+                return None
+            return item
 
     def remove(self, node_id: str) -> Optional[NodeResourceAdvertisement]:
         with self._lock:
@@ -206,6 +237,9 @@ class NodeResourceRegistry:
 
     def snapshot(self) -> Tuple[NodeResourceAdvertisement, ...]:
         with self._lock:
+            for key, item in tuple(self._nodes.items()):
+                if not self._proof_is_current(item):
+                    self._nodes.pop(key, None)
             return tuple(self._nodes[key] for key in sorted(self._nodes))
 
     def capacity_snapshot(self) -> BodyCapacitySnapshot:
@@ -275,8 +309,8 @@ class LinuxResourceProbe:
         meminfo_reader: Optional[Callable[[], str]] = None,
         cpu_count_provider: Optional[Callable[[], Optional[int]]] = None,
         statvfs_provider: Optional[Callable[[str], os.statvfs_result]] = None,
-        body_verified: bool = True,
-        continuity_verified: bool = True,
+        body_verified: bool = False,
+        continuity_verified: bool = False,
     ) -> None:
         _require_text("node_id", node_id)
         _require_text("body_id", body_id)
@@ -291,8 +325,9 @@ class LinuxResourceProbe:
         self._meminfo_reader = meminfo_reader or self._read_meminfo
         self._cpu_count_provider = cpu_count_provider or os.cpu_count
         self._statvfs_provider = statvfs_provider or os.statvfs
-        self.body_verified = bool(body_verified)
-        self.continuity_verified = bool(continuity_verified)
+        # Legacy arguments are assertions, not completed identity verification.
+        self.body_verified = False
+        self.continuity_verified = False
 
     def probe(self, *, now: float) -> NodeResourceAdvertisement:
         if isinstance(now, bool) or not isinstance(now, (int, float)) or float(now) < 0.0:
@@ -318,8 +353,9 @@ class LinuxResourceProbe:
             body_id=self.body_id,
             observed_at=float(now),
             resources=tuple(found),
-            body_verified=self.body_verified,
-            continuity_verified=self.continuity_verified,
+            body_verified=False,
+            continuity_verified=False,
+            boot_id=_local_boot_id(),
         )
 
     @staticmethod
@@ -594,3 +630,11 @@ def _require_text_tuple(name: str, values: Tuple[str, ...]) -> None:
         raise ValueError("%s must be a tuple" % name)
     if any(not isinstance(value, str) or not value.strip() for value in values):
         raise ValueError("%s cannot contain blank values" % name)
+
+
+def _local_boot_id() -> str:
+    try:
+        value = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+        return str(uuid.UUID(value))
+    except (OSError, ValueError):
+        return ""

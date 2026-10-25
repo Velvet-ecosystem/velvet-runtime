@@ -277,8 +277,8 @@ class HeadlessLanNodeDaemon:
             temporary_absorption_capabilities=(
                 config.temporary_absorption_capabilities
             ),
-            body_verified=self.node_config.body_verified,
-            continuity_verified=self.node_config.continuity_verified,
+            body_verified=False,
+            continuity_verified=False,
             authority="none",
         )
         _validate_handler_profile(handlers, profile)
@@ -437,8 +437,8 @@ class HeadlessLanNodeDaemon:
             body_id=self.node_config.body_id,
             observed_at=now,
             resources=(),
-            body_verified=self.node_config.body_verified,
-            continuity_verified=self.node_config.continuity_verified,
+            body_verified=False,
+            continuity_verified=False,
             authority="none",
         )
         try:
@@ -526,6 +526,7 @@ def _advertisement_from_headless_status(
         body_id=body_id,
         observed_at=_nonnegative_number(snapshot.get("observed_at"), "observed_at"),
         resources=tuple(resources),
+        boot_id=str(snapshot.get("boot_id", "")),
         body_verified=_boolean(snapshot.get("body_verified"), "body_verified"),
         continuity_verified=_boolean(
             snapshot.get("continuity_verified"), "continuity_verified"

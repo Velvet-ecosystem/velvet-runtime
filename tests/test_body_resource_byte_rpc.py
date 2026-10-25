@@ -15,6 +15,9 @@ from services.body_resource_transport import BodyResourceService
 from services.distributed_work_byte_rpc import ByteRpcExchangeReport
 
 
+from tests.resource_verification_fixture import SimulationResourceRegistry as NodeResourceRegistry
+
+
 class LoopbackExchange:
     def __init__(self, endpoint, *, source_peer_id):
         self.endpoint = endpoint

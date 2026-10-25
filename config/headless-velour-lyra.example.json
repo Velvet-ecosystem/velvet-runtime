@@ -5,8 +5,8 @@
   "organ": "velour",
   "state_path": "/var/lib/velvet-node/status.json",
   "heartbeat_seconds": 5.0,
-  "body_verified": true,
-  "continuity_verified": true,
+  "body_verified": false,
+  "continuity_verified": false,
   "storage_paths": [
     {
       "resource_id": "storage.vault-1tb",
