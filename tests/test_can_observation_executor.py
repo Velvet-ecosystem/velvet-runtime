@@ -110,6 +110,17 @@ class TestCanObservationExecutor(unittest.TestCase):
             (False, "no matching safety gate is registered"),
         )
 
+    def test_every_default_physical_factory_fails_before_backend_when_kernel_proof_fails(self):
+        from unittest.mock import Mock, patch
+        from services.can_observation_executor import _default_observer_factory
+        from services.can_signal_summary_executor import _default_observer_factory as signal_factory
+        backend = Mock()
+        for factory in (_default_observer_factory, signal_factory):
+            with self.subTest(factory=factory), patch.dict(sys.modules, {"can": backend}), patch(
+                "velvet_vehicle_can.listen_only_backend.inspect_socketcan_link", side_effect=ValueError("unsafe")):
+                with self.assertRaises(ValueError): factory()
+        backend.Bus.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
