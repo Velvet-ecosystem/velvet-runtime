@@ -22,4 +22,4 @@ jobs:
           python -m pip install 'pytest>=7.4,<8.4' -r requirements-test-startup.txt \
             'git+https://github.com/Velvet-ecosystem/velvet-event-protocol.git@07bf1d1c8bb1ea4d05110f5f660c60c7de30dd84' \
             'git+https://github.com/Velvet-ecosystem/velvet-ai-core.git@cc1c06782febdb89190e0ac79f156ed456e56031'
-      - run: python -m pytest tests/test_startup_execution.py -q
+      - run: python -m pytest tests/test_startup_execution.py tests/test_managed_lifecycle.py -q
