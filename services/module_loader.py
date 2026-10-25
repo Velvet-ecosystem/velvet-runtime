@@ -1,146 +1,127 @@
-"""
-velvet-runtime: services/module_loader.py
-==========================================
-Dynamically loads Velvet modules from the /modules directory.
+"""Load trusted modules with only safe publish; own their bounded lifecycle.
 
-HARDENING DOCTRINE (Phase B/C):
-- ModuleLoader accepts a pre-built _SafePublish instance.
-  This is the hardened callable built inside runtime_wiring.build_runtime().
-- Modules receive ONLY the _SafePublish instance. Nothing else.
-- Modules do NOT receive: bus, enforcer, runtime dict, or any
-  reference that could be used to reach _publish or bypass enforcement.
-- Modules MUST expose register(publish) — 'publish' as the sole parameter.
-- Any module whose register() declares forbidden parameters
-  (enforcer, bus, runtime, event_bus) is REJECTED at load time.
-- Load failures are non-fatal; they are logged and skipped.
+Required modules fail boot. Optional failures degrade health. A module may expose
+stop() for partial-register rollback and shutdown, or return an object with stop().
+Python plugins are trusted in-process code, not a security sandbox.
 """
-
 import importlib.util
 import inspect
 import os
 import sys
-from typing import List
-
 from velvet_logging.logger import get_logger
 
-logger = get_logger("velvet.module_loader")
+logger = get_logger('velvet.module_loader')
+_FORBIDDEN_PARAMS = frozenset({'enforcer', 'bus', 'runtime', 'event_bus'})
 
-# Parameters that modules must NEVER declare in register().
-_FORBIDDEN_PARAMS = frozenset({"enforcer", "bus", "runtime", "event_bus"})
+
+class RequiredModuleError(RuntimeError):
+    pass
 
 
 class ModuleLoader:
-    """
-    Scans a directory for Python module files and loads them.
-
-    Accepts:
-      - modules_dir:   Path to scan for .py module files.
-      - safe_publish:  Pre-built _SafePublish instance.
-                       This is the ONLY value passed to modules.
-
-    Does NOT accept or store:
-      - bus
-      - enforcer
-      - runtime dict
-    """
-
-    def __init__(self, modules_dir: str, safe_publish):
+    def __init__(self, modules_dir: str, safe_publish, required_modules=()):
         self.modules_dir = modules_dir
         self._safe_publish = safe_publish
-        self._loaded = []  # type: List[str]
+        self.required_modules = tuple(required_modules)
+        if any(not isinstance(name, str) or not name.isidentifier() or name.startswith('_')
+               for name in self.required_modules):
+            raise ValueError('required module names must be public Python identifiers')
+        self._loaded = []
+        self._resources = []
+        self.failures = {}
+        self.stop_failures = []
+        self._started = False
 
-    def load_all(self) -> None:
-        if not os.path.isdir(self.modules_dir):
-            logger.error(
-                f"[BOOT] Modules directory '{self.modules_dir}' does not exist. "
-                f"No modules loaded."
-            )
-            return
+    @property
+    def healthy(self):
+        return self._started and not self.failures and not self.stop_failures
 
-        candidates = [
-            f for f in os.listdir(self.modules_dir)
-            if f.endswith(".py") and not f.startswith("_")
-        ]
-
-        if not candidates:
-            logger.warning(f"[BOOT] No modules found in '{self.modules_dir}'.")
-            return
-
-        for filename in sorted(candidates):
-            self._load_module(filename)
-
-        logger.info(
-            f"[BOOT] Module loading complete. "
-            f"Loaded: {self._loaded if self._loaded else 'none'}."
-        )
-
-    def _load_module(self, filename: str) -> None:
-        module_name = filename[:-3]
-        filepath = os.path.join(self.modules_dir, filename)
-
-        logger.info(f"[BOOT] Loading module: {module_name} ({filepath})")
-
+    def load_all(self):
+        if self._started or self._resources or self.stop_failures:
+            raise RuntimeError('loader already started or has unresolved cleanup failure')
+        self.failures = {}
+        candidates = sorted(f for f in os.listdir(self.modules_dir)
+                            if f.endswith('.py') and not f.startswith('_')) if os.path.isdir(self.modules_dir) else []
+        missing = set(self.required_modules) - {f[:-3] for f in candidates}
+        if missing:
+            raise RequiredModuleError('required modules missing: %s' % ', '.join(sorted(missing)))
         try:
-            spec = importlib.util.spec_from_file_location(module_name, filepath)
+            for filename in candidates:
+                if not self._load_module(filename) and filename[:-3] in self.required_modules:
+                    raise RequiredModuleError('required module failed: %s' % filename[:-3])
+            self._started = True
+        except BaseException:
+            self.stop_all()
+            raise
+
+    def _load_module(self, filename):
+        name = filename[:-3]
+        previous = sys.modules.get(name)
+        mod = None
+        stop = None
+        try:
+            spec = importlib.util.spec_from_file_location(name, os.path.join(self.modules_dir, filename))
             if spec is None or spec.loader is None:
-                logger.warning(
-                    f"[BOOT] Module '{module_name}': could not create import spec. Skipping."
-                )
-                return
+                raise ValueError('cannot create import spec')
             mod = importlib.util.module_from_spec(spec)
-            sys.modules[module_name] = mod
+            sys.modules[name] = mod
             spec.loader.exec_module(mod)
-        except Exception as e:
-            logger.error(
-                f"[BOOT] Module '{module_name}': failed to import. Skipping. Detail: {e}"
-            )
-            return
+            stop = getattr(mod, 'stop', None)
+            if stop is not None and not callable(stop):
+                raise TypeError('stop must be callable')
+            register = getattr(mod, 'register', None)
+            if not callable(register):
+                raise TypeError('register(publish) required')
+            params = inspect.signature(register).parameters
+            if 'publish' not in params or _FORBIDDEN_PARAMS.intersection(params):
+                raise ValueError('register must accept publish without Runtime internals')
+            result = register(publish=self._safe_publish)
+            returned_stop = getattr(result, 'stop', None)
+            if returned_stop is not None:
+                if not callable(returned_stop):
+                    raise TypeError('returned stop must be callable')
+                stop = returned_stop
+            self._resources.append((name, mod, previous, stop))
+            self._loaded.append(name)
+            return True
+        except BaseException as exc:
+            # A module-level stop must handle incomplete import/register safely.
+            if stop is None and mod is not None:
+                stop = getattr(mod, 'stop', None)
+            if callable(stop):
+                try:
+                    stop()
+                except BaseException as stop_exc:
+                    self.stop_failures.append((name, str(stop_exc)))
+            self._restore(name, mod, previous)
+            self.failures[name] = str(exc)
+            logger.error('[BOOT] Module %s failed: %s', name, exc)
+            if not isinstance(exc, Exception):
+                raise
+            if self.stop_failures:
+                raise RequiredModuleError('partial module cleanup failed: %s' % name) from exc
+            return False
 
-        if not hasattr(mod, "register"):
-            logger.warning(
-                f"[BOOT] Module '{module_name}': no register() found. "
-                f"Skipping. Modules must expose register(publish)."
-            )
-            return
+    @staticmethod
+    def _restore(name, mod, previous):
+        if sys.modules.get(name) is mod:
+            if previous is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = previous
 
-        if not callable(mod.register):
-            logger.warning(
-                f"[BOOT] Module '{module_name}': register is not callable. Skipping."
-            )
-            return
-
-        try:
-            sig = inspect.signature(mod.register)
-            params = set(sig.parameters.keys())
-        except (ValueError, TypeError) as e:
-            logger.warning(
-                f"[BOOT] Module '{module_name}': could not inspect register() "
-                f"signature. Skipping. Detail: {e}"
-            )
-            return
-
-        found_forbidden = _FORBIDDEN_PARAMS.intersection(params)
-        if found_forbidden:
-            logger.error(
-                f"[BOOT] Module '{module_name}': register() declares forbidden "
-                f"parameter(s) {found_forbidden}. "
-                f"REJECTING MODULE — modules must not accept internal runtime references."
-            )
-            return
-
-        if "publish" not in params:
-            logger.error(
-                f"[BOOT] Module '{module_name}': register() must declare a "
-                f"'publish' parameter. Skipping."
-            )
-            return
-
-        try:
-            mod.register(publish=self._safe_publish)
-            self._loaded.append(module_name)
-            logger.info(f"[BOOT] Module '{module_name}': registered successfully.")
-        except Exception as e:
-            logger.error(
-                f"[BOOT] Module '{module_name}': register() raised an exception. "
-                f"Skipping. Detail: {e}"
-            )
+    def stop_all(self):
+        while self._resources:
+            name, mod, previous, stop = self._resources.pop()
+            try:
+                if stop is not None:
+                    stop()
+            except BaseException as exc:
+                self.stop_failures.append((name, str(exc)))
+                logger.error('[SHUTDOWN] Module %s failed to stop: %s', name, exc)
+            finally:
+                self._restore(name, mod, previous)
+        self._loaded = []
+        self._started = False
+        if self.stop_failures:
+            raise RuntimeError('module cleanup failed: %s' % self.stop_failures)

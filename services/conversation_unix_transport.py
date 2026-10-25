@@ -50,6 +50,7 @@ class ConversationUnixServer(UnixRpcServer):
             raise TypeError("gateway must provide submit(text, modality=...)")
         if modality_factory is not None and not callable(modality_factory):
             raise TypeError("modality_factory must be callable")
+        self.health_session_id = None
         self.gateway = gateway
         self._modality_factory = modality_factory or _language_modality
         super().__init__(socket_path, self._dispatch_conversation, **kwargs)
@@ -60,6 +61,12 @@ class ConversationUnixServer(UnixRpcServer):
         payload: Mapping[str, Any],
         _peer: PeerCredentials,
     ) -> Mapping[str, Any]:
+        if operation == 'health':
+            if payload or self.health_session_id is None:
+                raise ValueError('Runtime health session unavailable')
+            return {'schema': 'velvet.runtime.conversation_health.v1',
+                    'session_id': self.health_session_id, 'physical_control': False,
+                    'grants_execution': False, 'grants_actuation': False}
         if operation != CONVERSATION_OPERATION:
             raise ValueError("unsupported conversation operation")
         if not isinstance(payload, Mapping):

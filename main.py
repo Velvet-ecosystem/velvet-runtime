@@ -27,6 +27,8 @@ from services.secure_boot_services import (
 )
 from services.sensor_lan_transport import build_optional_sensor_lan_service
 from services.startup_timing import StartupTimer
+from services.runtime_lifecycle import RuntimeLifecycle
+from services.runtime_live_status import RuntimeLiveStatus
 
 logger = get_logger("velvet.main")
 _SHUTDOWN = False
@@ -97,6 +99,7 @@ def _body_health_follower(runtime):
 def _optional_conversation_server(startup_timer):
     """Bind the local conversation endpoint only when explicitly enabled."""
 
+    server = None
     try:
         server = build_optional_conversation_server()
         if server is None:
@@ -106,6 +109,8 @@ def _optional_conversation_server(startup_timer):
         logger.info("[BOOT] Local grounded conversation socket enabled: %s", server.socket_path)
         return server
     except Exception as exc:
+        if server is not None:
+            server.close()
         logger.warning("[BOOT] Optional local conversation socket inactive: %s", exc)
         return None
 
@@ -129,6 +134,7 @@ def _optional_sensor_lan_service(sensor_lan_publish, startup_timer):
         logger.info("[BOOT] Sensor LAN listener inactive because sensor services are unavailable.")
         return None
 
+    service = None
     try:
         service = build_optional_sensor_lan_service(sensor_lan_publish)
         if service is None:
@@ -142,11 +148,13 @@ def _optional_sensor_lan_service(sensor_lan_publish, startup_timer):
         )
         return service
     except Exception as exc:
+        if service is not None:
+            service.stop()
         logger.warning("[BOOT] Optional sensor LAN listener inactive: %s", exc)
         return None
 
 
-def main():
+def _run_main(lifecycle, live_status):
     startup_timer = StartupTimer()
     logger.info("[BOOT] === Velvet Runtime Starting ===")
     signal.signal(signal.SIGINT, _handle_signal)
@@ -181,6 +189,7 @@ def main():
         execution_pipeline = provision_pipeline_then_load_modules(
             identity_context=identity_context,
             safe_publish=runtime["publish"],
+            lifecycle_owner=lifecycle,
         )
         startup_timer.mark("pipeline and modules")
     except PipelineProvisioningError as exc:
@@ -208,7 +217,12 @@ def main():
     health_follower = _body_health_follower(runtime)
     startup_timer.mark("body health follower")
     conversation_server = _optional_conversation_server(startup_timer)
+    if conversation_server is not None:
+        conversation_server.health_session_id = live_status.session_id
+        lifecycle.add('conversation', conversation_server.close)
     sensor_lan_service = _optional_sensor_lan_service(sensor_lan_publish, startup_timer)
+    if sensor_lan_service is not None:
+        lifecycle.add('sensor-lan', sensor_lan_service.stop)
 
     logger.info(
         "[BOOT] Execution pipeline provisioned with four read-only executors "
@@ -222,6 +236,12 @@ def main():
 
     logger.info("[BOOT] Entering idle loop.")
     while not _SHUTDOWN:
+        loader = getattr(execution_pipeline, 'module_loader', None)
+        modules_healthy = loader is not None and loader.healthy
+        live_status.write('ready' if modules_healthy else 'degraded',
+            continuity_verified=True, court_ready=True, modules_healthy=modules_healthy,
+            services={'conversation': conversation_server is not None,
+                      'sensor_lan': sensor_lan_service is not None})
         forwarded_health = health_follower.poll()
         if forwarded_health:
             logger.info(
@@ -235,6 +255,7 @@ def main():
             except Exception as exc:
                 logger.warning("[CONVERSATION] Local socket disabled after transport failure: %s", exc)
                 conversation_server.close()
+                lifecycle.discard('conversation')
                 conversation_server = None
         if sensor_lan_service is not None and sensor_lan_service.failure is not None:
             logger.warning(
@@ -242,16 +263,39 @@ def main():
                 sensor_lan_service.failure,
             )
             sensor_lan_service.stop()
+            lifecycle.discard('sensor-lan')
             sensor_lan_service = None
         _ = (execution_pipeline, local_gateway)
         time.sleep(1)
 
-    if conversation_server is not None:
-        conversation_server.close()
-    if sensor_lan_service is not None:
-        sensor_lan_service.stop()
     logger.info("[BOOT] === Velvet Runtime Shutdown ===")
     sys.exit(0)
+
+
+def main():
+    global _SHUTDOWN
+    _SHUTDOWN = False
+    lifecycle = RuntimeLifecycle()
+    live_status = RuntimeLiveStatus()
+    live_status.write('starting')
+    failed = False
+    try:
+        return _run_main(lifecycle, live_status)
+    except SystemExit as exc:
+        failed = exc.code not in (None, 0)
+        raise
+    except BaseException:
+        failed = True
+        raise
+    finally:
+        # Revoke readiness before cleanup, including exceptions and SystemExit.
+        try:
+            live_status.write('stopping')
+        finally:
+            failures = lifecycle.close()
+            live_status.write('failed' if failed or failures else 'stopped')
+        if failures:
+            raise RuntimeError('Runtime cleanup failed: %s' % (failures,))
 
 
 if __name__ == "__main__":
