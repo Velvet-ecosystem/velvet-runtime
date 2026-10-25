@@ -217,6 +217,17 @@ class TestExecutionReceiptSink(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 module.make_execution_receipt_sink("/tmp/execution.log")
 
+    def test_old_receipt_package_blocks_sink_construction_before_writes(self):
+        old = SimpleNamespace(log=MagicMock(), verify_chain=lambda: (True, []))
+        with tempfile.TemporaryDirectory() as directory, patch.dict(sys.modules, {
+            'receipt_logger': SimpleNamespace(ReceiptLogger=lambda filepath: old),
+            'runtime_receipts': MagicMock(), 'memory_retrieval_receipt': MagicMock(),
+        }):
+            module = self.load_module()
+            with self.assertRaises(module.RuntimeReceiptLedgerError):
+                module.ExecutionReceiptLedger(Path(directory)/'receipts.jsonl')
+        old.log.assert_not_called()
+
     def test_old_receipt_lookup_without_atomic_snapshot_is_rejected(self):
         module = self.load_module()
         ledger = module.ExecutionReceiptLedger.__new__(module.ExecutionReceiptLedger)

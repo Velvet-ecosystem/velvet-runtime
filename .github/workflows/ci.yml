@@ -64,7 +64,11 @@ jobs:
         run: |
           python -m pip install 'pytest>=7.4,<8.4' \
             'git+https://github.com/Velvet-ecosystem/velvet-event-protocol.git@ff2171512e1ecdbbf1e84ef727d094539ddc0b80' \
-            'git+https://github.com/Velvet-ecosystem/velvet-ai-core.git@3346578c6d7d378e00b7bca42ef524cd666bf2ec'
+            'git+https://github.com/Velvet-ecosystem/velvet-ai-core.git@3346578c6d7d378e00b7bca42ef524cd666bf2ec' \
+            'git+https://github.com/Velvet-ecosystem/velvet-vehicle-can.git@ebdd8740d85939e4de0087870b4e31c240ac9348'
+
+      - name: Install disposable startup-test dependencies
+        run: python -m pip install -r requirements-test-startup.txt
 
       - name: Install transactional receipt snapshot contract
         run: python -m pip install 'git+https://github.com/Velvet-ecosystem/velvet-receipts.git@56e4b305cbb6189ebfb93249f0a73a8a317d8a4b'

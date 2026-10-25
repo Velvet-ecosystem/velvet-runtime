@@ -57,6 +57,10 @@ class ExecutionReceiptLedger:
         self.filepath = Path(filepath).expanduser().resolve()
         self.filepath.parent.mkdir(parents=True, exist_ok=True)
         self.logger = ReceiptLogger(filepath=str(self.filepath))
+        if not callable(getattr(self.logger, 'read_entries', None)):
+            raise RuntimeReceiptLedgerError(
+                'transactional velvet-receipts with verified snapshots is required before startup'
+            )
         self._runtime_receipt_from_envelope = runtime_receipt_from_envelope
         self._memory_retrieval_receipt_from_envelope = (
             memory_retrieval_receipt_from_envelope
