@@ -68,3 +68,25 @@ that the local SQLite transactions are canonical Velour receipts.
 5. UI presentation can consume workdesk_report() as a snapshot adapter.
    Live GitHub/email/calendar exports and Founder touch mapping are later,
    separately authorized integrations.
+
+
+## Eleanor -> Work Desk ghost adapter
+
+This offline adapter makes Eleanor's analyzed CI report visible to the same
+Founder Work Desk screen, without creating any external API dependency.
+
+Example (repo root, in a private test folder already created by the owner):
+
+    python3 -m tools.compose_founder_ghost_workdesk \
+      examples/fixtures/founder_workdesk_ghost.json \
+      examples/fixtures/eleanor_v33_diagnosis.json \
+      --observed-at 2026-11-19T20:00:00Z \
+      --output .velvet-dev/founder-workdesk.json
+
+The CLI accepts the JSON envelope printed by the standalone Eleanor Build
+Doctor CLI, validates its authority and report schema, creates one stable
+idempotent blocking-work card and atomically writes a private 0600 ghost
+snapshot. It never fetches evidence, grants authority or silently provisions
+directories. Use this ghost file as --workdesk-snapshot for Founder Interface.
+
+The source diagnostic fixture is an example, not a live GitHub status.
