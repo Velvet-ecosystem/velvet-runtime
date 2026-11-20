@@ -1,0 +1,19 @@
+{
+  "ok": true,
+  "report": {
+    "schema": "velvet.eleanor.build-diagnosis.v1",
+    "source_url": "https://github.com/Velvet-ecosystem/velvet-portable-android/actions/runs/43815656781",
+    "read_only": true,
+    "authority": "none",
+    "diagnosis": "artifact_quota",
+    "category": "infrastructure",
+    "meaning": "GitHub Actions artifact storage quota prevents delivery.",
+    "next_action": "Review old disposable build artifacts, preserve the previous known-good signed APK, wait for quota accounting, then rerun owner signing.",
+    "failed_steps": [
+      "Upload signed isolated continuity APK"
+    ],
+    "build_and_signature_verified": true,
+    "artifact_available": false,
+    "owner_review_required": true
+  }
+}
