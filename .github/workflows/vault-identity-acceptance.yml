@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   acceptance:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.python-version == '3.8' && 'ubuntu-22.04' || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
